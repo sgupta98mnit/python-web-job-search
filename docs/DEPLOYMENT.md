@@ -109,7 +109,7 @@ Add this block before your default portfolio `handle`:
 ```caddyfile
 # Job Search Control Plane
 redir /projects/job-search /projects/job-search/ 308
-handle /projects/job-search/* {
+handle_path /projects/job-search/* {
   reverse_proxy job-search-web:3000 {
     header_up Host {host}
     header_up X-Forwarded-Host {host}
@@ -118,16 +118,20 @@ handle /projects/job-search/* {
 }
 ```
 
-Use `handle`, not `handle_path`, because Next.js needs to see the
-`/projects/job-search` prefix when `basePath` is enabled.
+Use `handle_path` so Caddy strips `/projects/job-search` before forwarding to
+the Next.js server. The built app still emits prefixed asset and navigation URLs
+because `NEXT_PUBLIC_BASE_PATH` is enabled at build time.
 
-If Caddy is running as a Docker container, connect `job-search-web` to the same
-Docker network as Caddy:
+If Caddy is running as a Docker container, attach `job-search-web` to the same
+external Docker network as Caddy. This server uses a network named `web`, so run
+Compose with the Caddy override:
 
 ```bash
-docker network ls
-docker network connect YOUR_CADDY_NETWORK job-search-web
+docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml --env-file .env up -d --build
 ```
+
+Set `CADDY_NETWORK=YOUR_CADDY_NETWORK` in `.env` if your Caddy network has a
+different name.
 
 If Caddy is installed directly on the VPS instead of running in Docker, proxy to
 `127.0.0.1:3000` and keep `WEB_BIND=127.0.0.1`.
