@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/errors";
 
-const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_BASE?.trim() ?? "";
+const CONFIGURED_API_BASE =
+  cleanBase(process.env.NEXT_PUBLIC_API_BASE) || cleanBase(process.env.NEXT_PUBLIC_BASE_PATH);
 
 export async function clientApiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -58,4 +59,8 @@ async function errorMessage(response: Response) {
   } catch {
     return text;
   }
+}
+
+function cleanBase(value: string | undefined) {
+  return value?.trim().replace(/\/+$/, "") ?? "";
 }

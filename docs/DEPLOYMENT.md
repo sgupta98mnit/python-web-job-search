@@ -67,12 +67,60 @@ WEB_BIND=0.0.0.0
 Then open:
 
 ```text
-http://YOUR_SERVER_IP:3000
+http://YOUR_SERVER_IP:3000/projects/job-search
 ```
 
 ## 4. Put it behind HTTPS
 
-Point a domain to the VPS, then reverse proxy to `127.0.0.1:3000`.
+For your existing `sumit-gupta.cloud` Caddy setup, this repo is configured to run
+under:
+
+```text
+/projects/job-search
+```
+
+Keep these values in `.env`:
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/projects/job-search
+NEXT_PUBLIC_API_BASE=/projects/job-search
+APP_COOKIE_SECURE=true
+APP_CORS_ORIGINS=https://sumit-gupta.cloud,https://www.sumit-gupta.cloud
+```
+
+Add this block before your default portfolio `handle`:
+
+```caddyfile
+# Job Search Control Plane
+redir /projects/job-search /projects/job-search/ 308
+handle /projects/job-search/* {
+  reverse_proxy job-search-web:3000 {
+    header_up Host {host}
+    header_up X-Forwarded-Host {host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+}
+```
+
+Use `handle`, not `handle_path`, because Next.js needs to see the
+`/projects/job-search` prefix when `basePath` is enabled.
+
+If Caddy is running as a Docker container, connect `job-search-web` to the same
+Docker network as Caddy:
+
+```bash
+docker network ls
+docker network connect YOUR_CADDY_NETWORK job-search-web
+```
+
+If Caddy is installed directly on the VPS instead of running in Docker, proxy to
+`127.0.0.1:3000` and keep `WEB_BIND=127.0.0.1`.
+
+### Subdomain alternative
+
+If you prefer a subdomain, leave `NEXT_PUBLIC_BASE_PATH` and
+`NEXT_PUBLIC_API_BASE` blank, point the subdomain to the VPS, then reverse proxy
+to `127.0.0.1:3000`.
 
 Example Caddyfile:
 

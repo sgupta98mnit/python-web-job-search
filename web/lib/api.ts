@@ -7,6 +7,7 @@ const API_BASE =
   process.env.API_BASE_INTERNAL ??
   process.env.NEXT_PUBLIC_API_BASE ??
   "http://localhost:8000";
+const APP_BASE_PATH = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH);
 
 type FetchOptions = RequestInit & {
   cookie?: string;
@@ -31,7 +32,7 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   if (!response.ok) {
     const message = await errorMessage(response);
     if (response.status === 401) {
-      redirect("/login");
+      redirect(`${APP_BASE_PATH}/login`);
     }
     throw new ApiError(response.status, message);
   }
@@ -58,4 +59,15 @@ async function errorMessage(response: Response) {
   } catch {
     return text;
   }
+}
+
+function normalizeBasePath(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed || trimmed === "/") {
+    return "";
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
