@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from api.auth import SESSION_COOKIE, SESSION_DAYS, make_cookie, verify_password
@@ -21,7 +23,7 @@ def login(body: LoginRequest, response: Response) -> OkResponse:
         make_cookie(),
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=_env_bool("APP_COOKIE_SECURE"),
         max_age=SESSION_DAYS * 24 * 60 * 60,
         path="/",
     )
@@ -37,3 +39,10 @@ def logout(response: Response, _: dict = Depends(require_auth)) -> OkResponse:
 @router.get("/me", response_model=OkResponse)
 def me(_: dict = Depends(require_auth)) -> OkResponse:
     return OkResponse()
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
