@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: job-search-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=jobsearch
+      - POSTGRES_PASSWORD=jobsearch
+      - POSTGRES_DB=jobsearch
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobsearch -d jobsearch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: job-search-valkey
+    restart: unless-stopped
+    command: valkey-server --save 30 1 --loglevel warning
+    networks:
+      - searxng
+    volumes:
+      - valkey-data:/data
+
+  tor:
+    image: peterdavehello/tor-socks-proxy:latest
+    container_name: job-search-tor
+    restart: unless-stopped
+    networks:
+      - searxng
+    # Exposes a SOCKS5 proxy on tor:9150 within the compose network.
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: job-search-searxng
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+      - SEARXNG_REDIS_URL=redis://valkey:6379/0
+    depends_on:
+      - valkey
+      - tor
+    networks:
+      - searxng
+
+networks:
+  searxng:
+    driver: bridge
+
+volumes:
+  valkey-data:
+  postgres-data:

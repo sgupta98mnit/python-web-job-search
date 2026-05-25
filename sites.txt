@@ -1,0 +1,40 @@
+# ATS / job-board site filters. One Google `site:` fragment per line.
+# These are crossed with titles.txt to produce N x M queries.
+#
+# Optional per-site page override: append "| pages=N" to fetch N pages
+# instead of the global config.PAGES_PER_QUERY default. Use 1 for low-yield
+# ATSes, 3 for the big ones. Each page costs 1 Serper credit.
+
+# S1 Core ATS (greenhouse OR'd because same company, two domains)
+(site:greenhouse.io OR site:job-boards.greenhouse.io) | pages=3
+site:jobs.lever.co | pages=2
+site:jobs.ashbyhq.com | pages=3
+
+# S2 generic jobs subdomains
+site:jobs.* | pages=2
+
+# S3 generic talent subdomains (high raw, ~94% dedup rate -> keep at pages=1)
+site:talent.* | pages=1
+
+# S4 careers pages
+(site:careers.* OR site:*/careers/* OR site:*/career/*) | pages=2
+
+# S5 Paylocity
+site:recruiting.paylocity.com | pages=1
+
+# S6 Workable
+site:jobs.workable.com | pages=1
+
+# S9 Oracle Cloud
+site:oraclecloud.com | pages=1
+
+# S10 Workday
+site:myworkdayjobs.com | pages=3
+
+# S12 SmartRecruiters
+site:jobs.smartrecruiters.com | pages=2
+
+# Tiny tier: breezy + rippling + adp combined. Each returned <1 result/title
+# in real Serper data (6 unique kept across all 3 sites x 8 titles). OR-grouping
+# safe here since Google returns so few results, no site dominates ranking.
+(site:breezy.hr OR site:rippling.com OR site:rippling-ats.com OR site:workforcenow.adp.com OR site:myjobs.adp.com) | pages=1

@@ -1,0 +1,10 @@
+# One Google-style query per line. Lines starting with # and blank lines are ignored.
+# These are sent verbatim to SearXNG, which forwards them to its configured engines
+# (Google, Bing, etc.). Use site: filters to target ATS hosts.
+#
+# Time filtering is handled by SearXNG's `time_range` param (day/week/month/year) at
+# the engine level, not via Google's tbs=qdr - keep that in mind.
+
+# "Software Engineer" site:greenhouse.io USA
+# "Software Engineer" site:lever.co USA
+# "Software Engineer" site:ashbyhq.com USA

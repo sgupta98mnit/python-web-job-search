@@ -1,0 +1,70 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Python tooling and test output
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local generated app data
+output/
+*.sqlite
+*.sqlite3
+*.db
+*.tmp
+*.bak
+*cookies.txt
+
+# Local service/runtime state
+searxng/settings.yml
+!searxng/settings.example.yml
+searxng/cache/
+searxng/data/
+
+# Editor, OS, and assistant-local files
+.idea/
+.vscode/
+.claude/settings.local.json
+.DS_Store
+Thumbs.db

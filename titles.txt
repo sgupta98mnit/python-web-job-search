@@ -1,0 +1,27 @@
+# Job titles. One per line. Quotes/parens are kept verbatim in the final query.
+# Lines starting with # and blank lines are ignored.
+# Each title is crossed with every site in sites.txt, then LOCATION is appended.
+
+# T1 Software engineer
+"software engineer"
+
+# T2 Backend engineer (US bias handled by config.LOCATION)
+("backend engineer" OR "backend developer" OR "back-end engineer")
+
+# T3 Integration engineer
+"integration engineer" (API OR SaaS OR platform OR enterprise OR backend OR ecosystem)
+
+# T4 IAM / Identity / SSO
+("IAM engineer" OR "identity engineer" OR "SSO engineer" OR "identity and access management")
+
+# T5 Java / Spring Boot
+("Java" OR "Spring Boot") engineer
+
+# T6 Okta / Auth0 / SAML / SCIM
+("Okta" OR "Auth0" OR "SAML" OR "OAuth" OR "SCIM") engineer
+
+# T7 Forward Deployed Engineer
+("Forward Deployed Engineer" OR "Forward Deployed Software Engineer" OR "FDE")
+
+# T8 Application Developer
+"Application Developer" ("Java" OR "Spring Boot" OR "TypeScript" OR "Python" OR "Node" OR "Spring")
