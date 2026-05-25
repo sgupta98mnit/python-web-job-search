@@ -11,6 +11,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return int(value)
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return float(value)
+
+
 # ---------------------------------------------------------------------------
 # Provider selection - THE one knob that swaps the LLM backend.
 # Valid values: "ollama", "openai", "nvidia", "anthropic", "custom"
@@ -86,36 +100,36 @@ SEARCH_PRESETS: dict[str, dict[str, str | None]] = {
 # Kept for backward compatibility / direct override.
 SEARXNG_URL: str = os.getenv("SEARXNG_URL", "http://localhost:8888")
 # Upper bound on total results per query, summed across all fetched pages.
-RESULTS_PER_QUERY: int = 30
+RESULTS_PER_QUERY: int = _env_int("RESULTS_PER_QUERY", 30)
 # Max SearXNG pages to fetch per query. Stops early if a page returns 0 results
 # or once RESULTS_PER_QUERY is reached. Each page is typically ~10 results.
 # Going past page 2-3 is the strongest "scraper" signal to Google; keep this low.
-PAGES_PER_QUERY: int = 2
+PAGES_PER_QUERY: int = _env_int("PAGES_PER_QUERY", 2)
 
 # ----- Throttling -----
-# Tuned for Google-through-SearXNG from a residential IP: Google CAPTCHAs hard
-# above ~1 req/min sustained. These settings keep us under that ceiling, at the
-# cost of cycle wall-time. If you switch to a paid backend (Serper) you can
-# slash these (e.g. SECONDS_BETWEEN_QUERIES=1, MAX_REQUESTS_PER_MINUTE=60).
-SECONDS_BETWEEN_QUERIES: float = 120.0   # 2 min between logical queries
-SECONDS_BETWEEN_PAGES: float = 90.0      # 1.5 min between pages of one query
-THROTTLE_JITTER: float = 0.4             # 40% +/-
+# Tuned for Google-through-SearXNG. VPS/data-center IPs tend to hit CAPTCHA and
+# block thresholds sooner than residential IPs, so deploy.env.example sets a
+# slower profile. If you switch to a paid backend (Serper), you can slash these
+# e.g. SECONDS_BETWEEN_QUERIES=1, MAX_REQUESTS_PER_MINUTE=60.
+SECONDS_BETWEEN_QUERIES: float = _env_float("SECONDS_BETWEEN_QUERIES", 120.0)
+SECONDS_BETWEEN_PAGES: float = _env_float("SECONDS_BETWEEN_PAGES", 90.0)
+THROTTLE_JITTER: float = _env_float("THROTTLE_JITTER", 0.4)
 
 # Sliding-window cap on outbound SearXNG requests, regardless of the delays above.
-# 1/min is roughly the sustained ceiling a single residential IP gets from Google.
-MAX_REQUESTS_PER_MINUTE: int = 1
+# 1/min is a conservative ceiling; use the delay settings above for wider spacing.
+MAX_REQUESTS_PER_MINUTE: int = _env_int("MAX_REQUESTS_PER_MINUTE", 1)
 
 # Exponential backoff on transient SearXNG failures (HTTP 429/5xx, timeouts).
-RETRY_MAX_ATTEMPTS: int = 4
-RETRY_BACKOFF_BASE: float = 5.0          # seconds; doubles each retry
-RETRY_BACKOFF_MAX: float = 90.0          # cap per retry
+RETRY_MAX_ATTEMPTS: int = _env_int("RETRY_MAX_ATTEMPTS", 4)
+RETRY_BACKOFF_BASE: float = _env_float("RETRY_BACKOFF_BASE", 5.0)
+RETRY_BACKOFF_MAX: float = _env_float("RETRY_BACKOFF_MAX", 90.0)
 
 # After this many consecutive zero-result queries, pause the run for the long
 # cool-off period instead of plowing on. 0 disables.
-COOLOFF_AFTER_EMPTY_QUERIES: int = 2
-COOLOFF_SECONDS: float = 1800.0          # 30 min - real recovery time for Google
-BATCH_SIZE: int = 8
-MIN_SCORE: int = 60
+COOLOFF_AFTER_EMPTY_QUERIES: int = _env_int("COOLOFF_AFTER_EMPTY_QUERIES", 2)
+COOLOFF_SECONDS: float = _env_float("COOLOFF_SECONDS", 1800.0)
+BATCH_SIZE: int = _env_int("BATCH_SIZE", 8)
+MIN_SCORE: int = _env_int("MIN_SCORE", 60)
 OUTPUT_DIR: str = "output"
 
 # SearXNG time filter: None | "day" | "week" | "month" | "year"

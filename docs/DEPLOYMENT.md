@@ -50,6 +50,22 @@ At minimum set:
 - `POSTGRES_PASSWORD`
 - the API key for your configured provider, for example `ANTHROPIC_API_KEY`
 
+The deploy env template also uses a conservative SearXNG profile for VPS IPs:
+
+```bash
+SECONDS_BETWEEN_QUERIES=300
+SECONDS_BETWEEN_PAGES=180
+THROTTLE_JITTER=0.5
+MAX_REQUESTS_PER_MINUTE=1
+RETRY_BACKOFF_BASE=30
+RETRY_BACKOFF_MAX=300
+COOLOFF_AFTER_EMPTY_QUERIES=1
+COOLOFF_SECONDS=3600
+```
+
+That gives roughly 2.5-7.5 minutes between logical queries after jitter, 1.5-4.5
+minutes between pages, and a 1-hour pause after the first empty query batch.
+
 ## 3. Start the app
 
 ```bash
