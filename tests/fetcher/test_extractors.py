@@ -97,3 +97,59 @@ def test_workday_extracts_job_posting_description():
     assert result.extractor == "workday_v1"
     assert "Identity Platform" in (result.body_text or "")
     assert "OIDC" in (result.body_text or "")
+
+
+import json
+from unittest.mock import patch, Mock
+
+from fetcher.extractors.ashby import AshbyExtractor, parse_ashby_url
+
+
+def test_parse_ashby_url():
+    assert parse_ashby_url("https://jobs.ashbyhq.com/acme/abc-123") == ("acme", "abc-123")
+    assert parse_ashby_url("https://jobs.ashbyhq.com/acme/abc-123/apply") == ("acme", "abc-123")
+    assert parse_ashby_url("https://jobs.ashbyhq.com/acme") is None
+    assert parse_ashby_url("https://example.com/jobs/1") is None
+
+
+def test_ashby_uses_static_html_when_present():
+    html = """
+    <html><body>
+      <div class="posting-description">
+        <p>Platform Engineer at Ashby-hosted company.</p>
+      </div>
+    </body></html>
+    """
+    result = AshbyExtractor().extract(
+        url="https://jobs.ashbyhq.com/acme/abc-123", html=html
+    )
+    assert result.extractor == "ashby_v1"
+    assert "Platform Engineer" in (result.body_text or "")
+
+
+def test_ashby_falls_back_to_api_when_html_empty():
+    html = "<html><body><div id=\"root\"></div></body></html>"
+    api_payload = {
+        "jobPosting": {
+            "title": "Backend Engineer",
+            "descriptionHtml": "<p>Build the backend at Acme.</p>",
+        }
+    }
+    fake_response = Mock(status_code=200)
+    fake_response.json.return_value = api_payload
+    fake_response.raise_for_status = Mock()
+
+    with patch("fetcher.extractors.ashby.requests.get", return_value=fake_response) as mock_get:
+        result = AshbyExtractor().extract(
+            url="https://jobs.ashbyhq.com/acme/abc-123", html=html
+        )
+    mock_get.assert_called_once()
+    assert "Build the backend at Acme" in (result.body_text or "")
+    assert result.extractor == "ashby_v1_api"
+
+
+def test_ashby_returns_none_when_url_unparseable():
+    html = "<html><body></body></html>"
+    result = AshbyExtractor().extract(url="https://jobs.ashbyhq.com/acme", html=html)
+    assert result.body_text is None
+    assert result.extractor == "ashby_v1"
