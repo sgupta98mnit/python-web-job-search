@@ -1,0 +1,5 @@
+logs:
+  - name: job-search-docker-logs
+    file: /var/lib/docker/containers/*/*.log
+    attributes:
+      service: job-search

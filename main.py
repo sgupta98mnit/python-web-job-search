@@ -22,6 +22,7 @@ import config
 from db.bootstrap import init_db
 from db.models import Run, ScoredResult, SearchResult
 from db.session import SessionLocal
+from notifications import notify_unsent_jobs
 from providers.factory import build_provider
 from score import score_all
 from search import load_titles, search_all
@@ -166,7 +167,12 @@ def _run_pipeline(
         return 2
 
 
-def _run_once(title_indices: list[int] | None, dedup_window_days: int) -> int:
+def _run_once(
+    title_indices: list[int] | None,
+    dedup_window_days: int,
+    *,
+    send_email: bool,
+) -> int:
     session = SessionLocal()
     try:
         rc = _run_pipeline(
@@ -175,10 +181,31 @@ def _run_once(title_indices: list[int] | None, dedup_window_days: int) -> int:
             dedup_window_days=dedup_window_days,
         )
         session.commit()
+        if rc == 0 and send_email:
+            try:
+                notify_unsent_jobs(session)
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                logging.exception("email notification failed: %s", e)
         return rc
     except Exception:
         session.rollback()
         raise
+    finally:
+        session.close()
+
+
+def _notify_only() -> int:
+    session = SessionLocal()
+    try:
+        notify_unsent_jobs(session)
+        session.commit()
+        return 0
+    except Exception as e:
+        session.rollback()
+        logging.exception("email notification failed: %s", e)
+        return 2
     finally:
         session.close()
 
@@ -243,6 +270,14 @@ def _parse_args() -> argparse.Namespace:
         "--wait-poll-minutes", type=int, default=15,
         help="Minutes between probes when --wait-for-engine is set (default: 15).",
     )
+    p.add_argument(
+        "--notify-only", action="store_true",
+        help="Send the email digest for already-scored unsent jobs, then exit.",
+    )
+    p.add_argument(
+        "--skip-email", action="store_true",
+        help="Run search/scoring without sending the email digest.",
+    )
     return p.parse_args()
 
 
@@ -255,12 +290,19 @@ def main() -> int:
     _setup_logging()
     init_db()
 
+    if args.notify_only:
+        return _notify_only()
+
     if args.wait_for_engine:
         if not _wait_for_engine(args.wait_for_engine, args.wait_poll_minutes):
             return 0
 
     if not args.daemon:
-        return _run_once(title_indices=None, dedup_window_days=args.dedup_window_days)
+        return _run_once(
+            title_indices=None,
+            dedup_window_days=args.dedup_window_days,
+            send_email=not args.skip_email,
+        )
 
     titles = load_titles()
     if not titles:
@@ -284,7 +326,11 @@ def main() -> int:
             label = f"cycle {cycle} title #{idx}: {titles[idx]!r}"
         print(f"\n{'='*70}\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {label}\n{'='*70}")
         try:
-            _run_once(title_indices, args.dedup_window_days)
+            _run_once(
+                title_indices,
+                args.dedup_window_days,
+                send_email=not args.skip_email,
+            )
         except KeyboardInterrupt:
             print("\nInterrupted - exiting daemon.")
             return 0

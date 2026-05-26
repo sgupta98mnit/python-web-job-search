@@ -25,6 +25,13 @@ def _env_float(name: str, default: float) -> float:
     return float(value)
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 # ---------------------------------------------------------------------------
 # Provider selection - THE one knob that swaps the LLM backend.
 # Valid values: "ollama", "openai", "nvidia", "anthropic", "custom"
@@ -134,6 +141,18 @@ COOLOFF_SECONDS: float = _env_float("COOLOFF_SECONDS", 1800.0)
 BATCH_SIZE: int = _env_int("BATCH_SIZE", 8)
 MIN_SCORE: int = _env_int("MIN_SCORE", 60)
 OUTPUT_DIR: str = "output"
+
+# Email notifications. The pipeline sends one digest of previously unsent jobs
+# whose score is strictly above EMAIL_SCORE_THRESHOLD.
+EMAIL_NOTIFICATIONS_ENABLED: bool = _env_bool("EMAIL_NOTIFICATIONS_ENABLED", True)
+EMAIL_TO: str = os.getenv("EMAIL_TO", "sgupta98mnit@outlook.com")
+EMAIL_SCORE_THRESHOLD: int = _env_int("EMAIL_SCORE_THRESHOLD", 50)
+SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.office365.com")
+SMTP_PORT: int = _env_int("SMTP_PORT", 587)
+SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM: str = os.getenv("SMTP_FROM", SMTP_USERNAME or EMAIL_TO)
+SMTP_STARTTLS: bool = _env_bool("SMTP_STARTTLS", True)
 
 # Cost controls for LLM scoring.
 # SCORE_CACHE_ENABLED reuses prior scores for the same normalized URL when the

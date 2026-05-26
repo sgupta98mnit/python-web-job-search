@@ -50,6 +50,32 @@ At minimum set:
 - `POSTGRES_PASSWORD`
 - the API key for your configured provider, for example `ANTHROPIC_API_KEY`
 
+Optional New Relic monitoring:
+
+- `NEW_RELIC_LICENSE_KEY`
+
+When `NEW_RELIC_LICENSE_KEY` is set, the Docker startup scripts enable New Relic
+APM and application log forwarding for three services:
+
+- `job-search-api`
+- `job-search-daemon`
+- `job-search-web`
+
+Leave `NEW_RELIC_LICENSE_KEY` blank to run without New Relic. The app does not
+use a separate infrastructure log forwarder by default, so logs are not sent
+twice.
+
+To forward every Docker stdout/stderr log line, including Python `print(...)`
+output from the daemon, run the optional infrastructure-agent profile:
+
+```bash
+NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED=false \
+  docker compose -f docker-compose.prod.yml --env-file .env --profile newrelic-infra up -d --build
+```
+
+Use either APM application log forwarding or the infrastructure log forwarder
+for a given log stream, not both, to avoid duplicate log ingestion.
+
 The deploy env template also uses a conservative SearXNG profile for VPS IPs:
 
 ```bash
@@ -109,7 +135,7 @@ Add this block before your default portfolio `handle`:
 ```caddyfile
 # Job Search Control Plane
 redir /projects/job-search /projects/job-search/ 308
-handle_path /projects/job-search/* {
+handle /projects/job-search/* {
   reverse_proxy job-search-web:3000 {
     header_up Host {host}
     header_up X-Forwarded-Host {host}
@@ -118,20 +144,23 @@ handle_path /projects/job-search/* {
 }
 ```
 
-Use `handle_path` so Caddy strips `/projects/job-search` before forwarding to
-the Next.js server. The built app still emits prefixed asset and navigation URLs
-because `NEXT_PUBLIC_BASE_PATH` is enabled at build time.
+Use `handle`, not `handle_path`, because the Next.js app is built with
+`NEXT_PUBLIC_BASE_PATH=/projects/job-search` and needs to receive that prefix.
+If Caddy strips the prefix, the app routes and assets will not line up.
 
 If Caddy is running as a Docker container, attach `job-search-web` to the same
-external Docker network as Caddy. This server uses a network named `web`, so run
-Compose with the Caddy override:
+external Docker network as Caddy:
 
 ```bash
-docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml --env-file .env up -d --build
+docker network ls
+docker network connect YOUR_CADDY_NETWORK job-search-web
 ```
 
-Set `CADDY_NETWORK=YOUR_CADDY_NETWORK` in `.env` if your Caddy network has a
-different name.
+If your Caddy network is named `web`, the second command is:
+
+```bash
+docker network connect web job-search-web
+```
 
 If Caddy is installed directly on the VPS instead of running in Docker, proxy to
 `127.0.0.1:3000` and keep `WEB_BIND=127.0.0.1`.
@@ -169,6 +198,12 @@ View logs:
 
 ```bash
 docker compose -f docker-compose.prod.yml logs -f web api
+```
+
+Check New Relic startup logs:
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f api daemon web | grep -i newrelic
 ```
 
 Run a search pipeline manually:

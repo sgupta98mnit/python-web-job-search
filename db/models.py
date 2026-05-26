@@ -196,6 +196,9 @@ class ScoredResult(Base):
     resume_versions: Mapped[list["ResumeVersion"]] = relationship(
         back_populates="scored_result", cascade="all, delete-orphan"
     )
+    email_notifications: Mapped[list["EmailNotification"]] = relationship(
+        back_populates="scored_result", cascade="all, delete-orphan"
+    )
 
 
 class ResumeVersion(Base):
@@ -222,4 +225,32 @@ class ResumeVersion(Base):
     )
     llm_call: Mapped[LLMCall | None] = relationship(
         back_populates="resume_versions"
+    )
+
+
+class EmailNotification(Base):
+    __tablename__ = "email_notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "recipient",
+            "normalized_url",
+            name="uq_email_notifications_recipient_url",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scored_result_id: Mapped[int] = mapped_column(
+        ForeignKey("scored_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    recipient: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    normalized_url: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    scored_result: Mapped[ScoredResult] = relationship(
+        back_populates="email_notifications"
     )

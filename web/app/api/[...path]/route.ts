@@ -20,6 +20,11 @@ async function proxy(request: NextRequest, context: RouteContext) {
   headers.delete("host");
   headers.delete("connection");
   headers.delete("content-length");
+  headers.delete("expect");
+  headers.delete("keep-alive");
+  headers.delete("proxy-connection");
+  headers.delete("transfer-encoding");
+  headers.delete("upgrade");
 
   const init: RequestInit = {
     method: request.method,

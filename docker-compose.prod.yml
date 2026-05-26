@@ -39,6 +39,26 @@ services:
       - valkey
       - tor
 
+  newrelic-infra:
+    image: newrelic/infrastructure:latest
+    container_name: job-search-newrelic-infra
+    profiles:
+      - newrelic-infra
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      NRIA_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+      NRIA_DISPLAY_NAME: ${NEW_RELIC_INFRA_DISPLAY_NAME:-job-search-host}
+    volumes:
+      - "/:/host:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "/var/lib/docker/containers:/var/lib/docker/containers:ro"
+      - "./newrelic-infra/logging.d:/etc/newrelic-infra/logging.d:ro"
+
   api:
     build:
       context: .
@@ -54,6 +74,14 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobsearch}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-jobsearch}
       SEARCH_BACKEND: ${SEARCH_BACKEND:-searxng}
       SEARXNG_URL: http://searxng:8080
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+      NEW_RELIC_ENABLED: ${NEW_RELIC_ENABLED:-true}
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_API_APP_NAME:-job-search-api}
+      NEW_RELIC_ENVIRONMENT: ${NEW_RELIC_ENVIRONMENT:-production}
+      NEW_RELIC_LOG: ${NEW_RELIC_LOG:-stdout}
+      NEW_RELIC_LOG_LEVEL: ${NEW_RELIC_LOG_LEVEL:-info}
+      NEW_RELIC_APPLICATION_LOGGING_ENABLED: ${NEW_RELIC_APPLICATION_LOGGING_ENABLED:-true}
+      NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED: ${NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED:-true}
     volumes:
       - output-data:/app/output
     depends_on:
@@ -72,13 +100,21 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: unless-stopped
-    command: sh -c "python -m db.bootstrap && python main.py --daemon --interval ${DAEMON_INTERVAL_MINUTES:-30}"
+    command: sh -c "python -m db.bootstrap && sh scripts/run-with-newrelic.sh python main.py --daemon --interval ${DAEMON_INTERVAL_MINUTES:-30}"
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobsearch}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-jobsearch}
       SEARCH_BACKEND: ${SEARCH_BACKEND:-searxng}
       SEARXNG_URL: http://searxng:8080
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+      NEW_RELIC_ENABLED: ${NEW_RELIC_ENABLED:-true}
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_DAEMON_APP_NAME:-job-search-daemon}
+      NEW_RELIC_ENVIRONMENT: ${NEW_RELIC_ENVIRONMENT:-production}
+      NEW_RELIC_LOG: ${NEW_RELIC_LOG:-stdout}
+      NEW_RELIC_LOG_LEVEL: ${NEW_RELIC_LOG_LEVEL:-info}
+      NEW_RELIC_APPLICATION_LOGGING_ENABLED: ${NEW_RELIC_APPLICATION_LOGGING_ENABLED:-true}
+      NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED: ${NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED:-true}
     volumes:
       - output-data:/app/output
     depends_on:
@@ -100,6 +136,13 @@ services:
       API_BASE_INTERNAL: http://api:8000
       NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
       NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+      NEW_RELIC_ENABLED: ${NEW_RELIC_ENABLED:-true}
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_WEB_APP_NAME:-job-search-web}
+      NEW_RELIC_ENVIRONMENT: ${NEW_RELIC_ENVIRONMENT:-production}
+      NEW_RELIC_LOG_LEVEL: ${NEW_RELIC_LOG_LEVEL:-info}
+      NEW_RELIC_APPLICATION_LOGGING_ENABLED: ${NEW_RELIC_APPLICATION_LOGGING_ENABLED:-true}
+      NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED: ${NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED:-true}
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
     depends_on:

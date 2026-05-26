@@ -2,7 +2,7 @@
 
 import { LockKeyhole } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { CyberButton, CyberCard, CyberInput } from "@/components/cyber";
 import { clientApiFetch } from "@/lib/client-api";
@@ -13,6 +13,11 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,23 +39,41 @@ export function LoginForm() {
 
   return (
     <CyberCard variant="terminal">
-      <form onSubmit={submit} className="space-y-5">
-        <div className="flex items-center gap-3 text-primary">
-          <LockKeyhole className="h-5 w-5" />
-          <span className="font-label text-sm uppercase">authentication required</span>
+      {!mounted ? (
+        <div className="space-y-5">
+          <div className="flex items-center gap-3 text-primary">
+            <LockKeyhole className="h-5 w-5" />
+            <span className="font-label text-sm uppercase">authentication required</span>
+          </div>
+          <div className="cyber-chamfer-sm h-10 w-full border border-border bg-input/80" />
+          <CyberButton className="w-full" variant="glitch" disabled>
+            login
+          </CyberButton>
         </div>
-        <CyberInput
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoFocus
-          required
-        />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <CyberButton className="w-full" variant="glitch" loading={loading}>
-          login
-        </CyberButton>
-      </form>
+      ) : (
+        <form onSubmit={submit} className="space-y-5">
+          <div className="flex items-center gap-3 text-primary">
+            <LockKeyhole className="h-5 w-5" />
+            <span className="font-label text-sm uppercase">authentication required</span>
+          </div>
+          <CyberInput
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoFocus
+            required
+            autoComplete="current-password"
+            data-1p-ignore="true"
+            data-bwignore="true"
+            data-form-type="other"
+            data-lpignore="true"
+          />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <CyberButton className="w-full" variant="glitch" loading={loading}>
+            login
+          </CyberButton>
+        </form>
+      )}
     </CyberCard>
   );
 }
