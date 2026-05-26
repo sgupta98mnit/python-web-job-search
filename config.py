@@ -169,6 +169,22 @@ SCORE_PREFILTER_ENABLED: bool = os.getenv("SCORE_PREFILTER_ENABLED", "true").low
     "yes",
 }
 
+# ---------------------------------------------------------------------------
+# Job-description fetcher (see docs/superpowers/specs/2026-05-26-jd-fetching-design.md)
+# Disabled => pipeline scores from snippets exactly as before.
+# ---------------------------------------------------------------------------
+JD_FETCH_ENABLED: bool = _env_bool("JD_FETCH_ENABLED", True)
+JD_FETCH_TIMEOUT: int = _env_int("JD_FETCH_TIMEOUT", 15)
+JD_FETCH_WORKERS: int = _env_int("JD_FETCH_WORKERS", 8)
+JD_FETCH_PER_HOST_RPS: float = _env_float("JD_FETCH_PER_HOST_RPS", 1.0)
+JD_CACHE_TTL_DAYS: int = _env_int("JD_CACHE_TTL_DAYS", 30)
+JD_MIN_BODY_CHARS: int = _env_int("JD_MIN_BODY_CHARS", 400)
+JD_USER_AGENT: str = os.getenv(
+    "JD_USER_AGENT",
+    "Mozilla/5.0 (compatible; jobsearch/1.0; "
+    "+https://github.com/sgupta98mnit/python-web-job-search)",
+)
+
 # SearXNG time filter: None | "day" | "week" | "month" | "year"
 # "day" ~= last 24 hours (the finest granularity SearXNG exposes).
 TIME_RANGE: str | None = "day"
