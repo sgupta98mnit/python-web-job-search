@@ -29,7 +29,7 @@ def _env_float(name: str, default: float) -> float:
 # Provider selection - THE one knob that swaps the LLM backend.
 # Valid values: "ollama", "openai", "nvidia", "anthropic", "custom"
 # ---------------------------------------------------------------------------
-PROVIDER: str = "anthropic"
+PROVIDER: str = os.getenv("PROVIDER", "anthropic")
 
 
 # Per-provider presets. To use a different model on a given provider, edit `model`
@@ -52,7 +52,10 @@ PRESETS: dict[str, dict[str, str | None]] = {
         "kind": "openai_compat",
         "base_url": "https://integrate.api.nvidia.com/v1",
         "key_env": "NVIDIA_API_KEY",
-        "model": "meta/llama-3.3-70b-instruct",
+        "model": os.getenv(
+            "NVIDIA_MODEL",
+            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+        ),
         "rpm_limit": 40,           # NVIDIA NIM catalog is ~40 req/min
     },
     "anthropic": {
@@ -131,6 +134,21 @@ COOLOFF_SECONDS: float = _env_float("COOLOFF_SECONDS", 1800.0)
 BATCH_SIZE: int = _env_int("BATCH_SIZE", 8)
 MIN_SCORE: int = _env_int("MIN_SCORE", 60)
 OUTPUT_DIR: str = "output"
+
+# Cost controls for LLM scoring.
+# SCORE_CACHE_ENABLED reuses prior scores for the same normalized URL when the
+# provider, model, and criteria text match. SCORE_PREFILTER_ENABLED marks
+# obvious non-job/search pages without calling the LLM.
+SCORE_CACHE_ENABLED: bool = os.getenv("SCORE_CACHE_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+SCORE_PREFILTER_ENABLED: bool = os.getenv("SCORE_PREFILTER_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 # SearXNG time filter: None | "day" | "week" | "month" | "year"
 # "day" ~= last 24 hours (the finest granularity SearXNG exposes).

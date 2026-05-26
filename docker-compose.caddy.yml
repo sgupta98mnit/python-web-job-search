@@ -1,0 +1,10 @@
+services:
+  web:
+    networks:
+      - default
+      - caddy
+
+networks:
+  caddy:
+    name: ${CADDY_NETWORK:-web}
+    external: true
