@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
+import fetcher
 from db.models import LLMCall, Run, ScoredResult, SearchResult
 from providers.base import LLMProvider
 
@@ -21,11 +22,20 @@ def _chunks(seq: list[SearchResult], size: int) -> Iterable[list[SearchResult]]:
         yield seq[i : i + size]
 
 
-def _to_dict(sr: SearchResult) -> dict:
+def _pick_description(sr: SearchResult, outcome) -> tuple[str, str, int | None]:
+    """Return (description_text, source, job_description_id). When the
+    fetched body is available, use it; otherwise fall back to the snippet."""
+    if outcome is not None and outcome.status == "ok" and outcome.body_text:
+        return outcome.body_text, "body", outcome.job_description_id
+    return sr.snippet, "snippet_fallback" if outcome is not None else "snippet", None
+
+
+def _to_dict(sr: SearchResult, outcome=None) -> dict:
+    description, _source, _jd_id = _pick_description(sr, outcome)
     return {
         "title": sr.title,
         "url": sr.url,
-        "snippet": sr.snippet,
+        "snippet": description,  # field name kept for prompt compatibility
         "engine": sr.engine,
     }
 
@@ -272,8 +282,22 @@ def score_all(
             print("    skipped LLM: all items handled by cache/prefilter")
             continue
 
+        if config.JD_FETCH_ENABLED:
+            jd_outcomes = fetcher.fetch_many(
+                session,
+                [(sr.normalized_url, sr.url) for sr in to_score],
+            )
+        else:
+            jd_outcomes = {}
+
+        prepared = [
+            (sr, _pick_description(sr, jd_outcomes.get(sr.normalized_url)))
+            for sr in to_score
+        ]
+        payloads = [_to_dict(sr, jd_outcomes.get(sr.normalized_url)) for sr in to_score]
+
         try:
-            outcome = provider.score_batch([_to_dict(sr) for sr in to_score], criteria)
+            outcome = provider.score_batch(payloads, criteria)
         except Exception as e:
             log.warning("batch %d crashed entirely: %s", bi + 1, e)
             continue
@@ -309,6 +333,7 @@ def score_all(
                 continue
             sr = to_score[sj.index]
             kept = bool(sj.is_job and sj.score >= min_score)
+            _sr, (_desc, source, jd_id) = prepared[sj.index]
             scored = ScoredResult(
                 run_id=run.id,
                 search_result_id=sr.id,
@@ -321,6 +346,8 @@ def score_all(
                 score=sj.score,
                 reason=sj.reason,
                 kept=kept,
+                source=source,
+                job_description_id=jd_id,
             )
             session.add(scored)
             all_scored.append(scored)
