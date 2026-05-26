@@ -199,6 +199,16 @@ class ScoredResult(Base):
     email_notifications: Mapped[list["EmailNotification"]] = relationship(
         back_populates="scored_result", cascade="all, delete-orphan"
     )
+    source: Mapped[str] = mapped_column(
+        String(20), default="body", server_default="snippet", nullable=False
+    )
+    job_description_id: Mapped[int | None] = mapped_column(
+        ForeignKey("job_descriptions.id", ondelete="SET NULL"), index=True
+    )
+
+    job_description: Mapped["JobDescription | None"] = relationship(
+        back_populates="scored"
+    )
 
 
 class ResumeVersion(Base):
@@ -253,4 +263,31 @@ class EmailNotification(Base):
 
     scored_result: Mapped[ScoredResult] = relationship(
         back_populates="email_notifications"
+    )
+
+
+class JobDescription(Base):
+    __tablename__ = "job_descriptions"
+    __table_args__ = (
+        UniqueConstraint("normalized_url", name="uq_job_descriptions_normalized_url"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    normalized_url: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    # 'ok' | 'http_error' | 'timeout' | 'unsupported' | 'parse_failed'
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    ats: Mapped[str | None] = mapped_column(String(20))
+    body_text: Mapped[str | None] = mapped_column(Text)
+    body_html_sha256: Mapped[str | None] = mapped_column(String(64))
+    extractor: Mapped[str] = mapped_column(String(40), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+
+    scored: Mapped[list["ScoredResult"]] = relationship(
+        back_populates="job_description"
     )
