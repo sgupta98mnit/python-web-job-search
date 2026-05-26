@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -36,18 +36,41 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 }
 
 
+SORT_OPTIONS = {
+    "date_desc": (ScoredResult.created_at.desc(), ScoredResult.id.desc()),
+    "date_asc": (ScoredResult.created_at.asc(), ScoredResult.id.asc()),
+    "score_desc": (ScoredResult.score.desc(), ScoredResult.created_at.desc()),
+    "score_asc": (ScoredResult.score.asc(), ScoredResult.created_at.desc()),
+    "company_asc": (
+        func.lower(ScoredResult.company).asc(),
+        ScoredResult.created_at.desc(),
+    ),
+}
+
+
 @router.get("", response_model=list[Application])
 def list_applications(
     status: str | None = None,
     min_score: int | None = None,
+    site: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sort: str = Query(default="date_desc"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ) -> list[Application]:
+    order_by = SORT_OPTIONS.get(sort)
+    if order_by is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid sort: {sort} (allowed: {sorted(SORT_OPTIONS)})",
+        )
+
     stmt = (
         select(ScoredResult, SearchResult)
         .join(SearchResult, ScoredResult.search_result_id == SearchResult.id)
-        .order_by(ScoredResult.created_at.desc(), ScoredResult.id.desc())
+        .order_by(*order_by)
         .limit(limit)
         .offset(offset)
     )
@@ -56,6 +79,15 @@ def list_applications(
         stmt = stmt.where(ScoredResult.status.in_(statuses))
     if min_score is not None:
         stmt = stmt.where(ScoredResult.score >= min_score)
+    if site:
+        stmt = stmt.where(func.lower(SearchResult.url).contains(site.lower()))
+    if date_from is not None:
+        start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+        stmt = stmt.where(ScoredResult.created_at >= start)
+    if date_to is not None:
+        # Inclusive of the whole day.
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        stmt = stmt.where(ScoredResult.created_at < end)
 
     return [_application_from(scored, search) for scored, search in session.execute(stmt)]
 
