@@ -212,6 +212,18 @@ def score_all(
     prefilter_hits = 0
     llm_scored = 0
 
+    jd_totals = {
+        "fetched": 0,
+        "cached": 0,
+        "ok": 0,
+        "http_error": 0,
+        "timeout": 0,
+        "unsupported": 0,
+        "parse_failed": 0,
+        "snippet_fallback": 0,
+    }
+    jd_ats: dict[str, int] = {}
+
     for bi, batch in enumerate(_chunks(search_results, batch_size)):
         print(f"  scoring batch {bi+1}/{total_batches} ({len(batch)} items)")
         to_score = list(batch)
@@ -290,6 +302,17 @@ def score_all(
         else:
             jd_outcomes = {}
 
+        for _nurl, oc in jd_outcomes.items():
+            # We can't distinguish 'cached' from 'fresh' purely from the
+            # outcome, so we count by status; the cache-vs-fresh split is
+            # observable in job_descriptions.fetched_at directly.
+            jd_totals[oc.status] = jd_totals.get(oc.status, 0) + 1
+            jd_totals["fetched"] += 1
+            if oc.status == "ok":
+                jd_ats[oc.ats] = jd_ats.get(oc.ats, 0) + 1
+            else:
+                jd_totals["snippet_fallback"] += 1
+
         prepared = [
             (sr, _pick_description(sr, jd_outcomes.get(sr.normalized_url)))
             for sr in to_score
@@ -364,4 +387,19 @@ def score_all(
             f"cache_hits={cache_hits}, prefiltered={prefilter_hits}, "
             f"llm_scored={llm_scored}"
         )
+    if jd_totals["fetched"]:
+        ats_summary = ", ".join(
+            f"{ats}={n}" for ats, n in sorted(jd_ats.items(), key=lambda x: -x[1])
+        ) or "(none)"
+        print(
+            "  JD fetch: "
+            f"fetched={jd_totals['fetched']} "
+            f"ok={jd_totals['ok']} "
+            f"http_error={jd_totals['http_error']} "
+            f"timeout={jd_totals['timeout']} "
+            f"unsupported={jd_totals['unsupported']} "
+            f"parse_failed={jd_totals['parse_failed']} "
+            f"snippet_fallback={jd_totals['snippet_fallback']}"
+        )
+        print(f"  ATS mix (ok-only): {ats_summary}")
     return kept_list
