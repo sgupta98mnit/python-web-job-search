@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-jobsearch}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-jobsearch}
+    ports:
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -64,6 +66,26 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    command: sh -c "python -m db.bootstrap && python main.py --daemon --interval ${DAEMON_INTERVAL_MINUTES:-30}"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobsearch}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-jobsearch}
+      SEARCH_BACKEND: ${SEARCH_BACKEND:-searxng}
+      SEARXNG_URL: http://searxng:8080
+    volumes:
+      - output-data:/app/output
+    depends_on:
+      postgres:
+        condition: service_healthy
+      searxng:
+        condition: service_started
 
   web:
     container_name: job-search-web
