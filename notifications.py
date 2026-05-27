@@ -1,16 +1,23 @@
-"""Email digests for newly discovered high-scoring jobs."""
+"""Email digests for newly discovered high-scoring jobs.
+
+Delivery goes through Resend's HTTP API (https://resend.com). Switched from
+SMTP after Microsoft disabled basic-auth SMTP on personal Outlook accounts
+in late 2024.
+"""
 
 from __future__ import annotations
 
 import html
-import smtplib
-from email.message import EmailMessage
+import logging
 
+import requests
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 import config
 from db.models import EmailNotification, ScoredResult, SearchResult
+
+log = logging.getLogger(__name__)
 
 PendingJob = tuple[ScoredResult, SearchResult]
 
@@ -38,10 +45,11 @@ def notify_unsent_jobs(session: Session) -> int:
         )
         return 0
 
-    if not _smtp_configured():
+    if not _resend_configured():
         print(
-            "Email notifications skipped: set SMTP_USERNAME and SMTP_PASSWORD "
-            "in .env to send through Outlook SMTP."
+            "Email notifications skipped: set RESEND_API_KEY in .env. "
+            "Get a key at https://resend.com (free tier sends from "
+            "onboarding@resend.dev to the account owner's address)."
         )
         return 0
 
@@ -50,8 +58,12 @@ def notify_unsent_jobs(session: Session) -> int:
         f"job{'s' if len(pending) != 1 else ''} above "
         f"{config.EMAIL_SCORE_THRESHOLD}"
     )
-    msg = _build_message(pending, recipient=recipient, subject=subject)
-    _send_message(msg)
+    _send_via_resend(
+        recipient=recipient,
+        subject=subject,
+        text_body=_plain_body(pending),
+        html_body=_html_body(pending),
+    )
 
     for scored, search in pending:
         session.add(
@@ -103,28 +115,8 @@ def _pending_jobs(
     return jobs
 
 
-def _smtp_configured() -> bool:
-    return bool(
-        config.SMTP_HOST.strip()
-        and config.SMTP_USERNAME.strip()
-        and config.SMTP_PASSWORD.strip()
-    )
-
-
-def _build_message(
-    jobs: list[PendingJob],
-    *,
-    recipient: str,
-    subject: str,
-) -> EmailMessage:
-    sender = config.SMTP_FROM.strip() or config.SMTP_USERNAME.strip()
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = recipient
-    msg.set_content(_plain_body(jobs))
-    msg.add_alternative(_html_body(jobs), subtype="html")
-    return msg
+def _resend_configured() -> bool:
+    return bool(config.RESEND_API_KEY.strip() and config.EMAIL_FROM.strip())
 
 
 def _plain_body(jobs: list[PendingJob]) -> str:
@@ -185,9 +177,34 @@ def _html_body(jobs: list[PendingJob]) -> str:
     )
 
 
-def _send_message(msg: EmailMessage) -> None:
-    with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as smtp:
-        if config.SMTP_STARTTLS:
-            smtp.starttls()
-        smtp.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
-        smtp.send_message(msg)
+def _send_via_resend(
+    *,
+    recipient: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+) -> None:
+    """POST to Resend's /emails endpoint. Raises on non-2xx."""
+    payload = {
+        "from": config.EMAIL_FROM.strip(),
+        "to": [recipient],
+        "subject": subject,
+        "text": text_body,
+        "html": html_body,
+    }
+    resp = requests.post(
+        config.RESEND_API_URL,
+        json=payload,
+        headers={"Authorization": f"Bearer {config.RESEND_API_KEY.strip()}"},
+        timeout=config.RESEND_TIMEOUT,
+    )
+    if resp.status_code >= 400:
+        # Resend returns {"name": "...", "message": "..."} on error.
+        try:
+            err = resp.json()
+            detail = err.get("message") or err.get("name") or resp.text
+        except ValueError:
+            detail = resp.text
+        raise RuntimeError(
+            f"Resend send failed ({resp.status_code}): {detail}"
+        )

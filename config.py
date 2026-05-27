@@ -147,12 +147,14 @@ OUTPUT_DIR: str = "output"
 EMAIL_NOTIFICATIONS_ENABLED: bool = _env_bool("EMAIL_NOTIFICATIONS_ENABLED", True)
 EMAIL_TO: str = os.getenv("EMAIL_TO", "sgupta98mnit@outlook.com")
 EMAIL_SCORE_THRESHOLD: int = _env_int("EMAIL_SCORE_THRESHOLD", 50)
-SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.office365.com")
-SMTP_PORT: int = _env_int("SMTP_PORT", 587)
-SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM: str = os.getenv("SMTP_FROM", SMTP_USERNAME or EMAIL_TO)
-SMTP_STARTTLS: bool = _env_bool("SMTP_STARTTLS", True)
+# Email is sent via Resend (https://resend.com). The free tier only allows
+# sending FROM `onboarding@resend.dev` TO the address that owns the API key.
+# To send from your own address, verify a domain at https://resend.com/domains
+# and set EMAIL_FROM=alerts@yourdomain.com.
+EMAIL_FROM: str = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
+RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+RESEND_API_URL: str = os.getenv("RESEND_API_URL", "https://api.resend.com/emails")
+RESEND_TIMEOUT: int = _env_int("RESEND_TIMEOUT", 15)
 
 # Cost controls for LLM scoring.
 # SCORE_CACHE_ENABLED reuses prior scores for the same normalized URL when the
