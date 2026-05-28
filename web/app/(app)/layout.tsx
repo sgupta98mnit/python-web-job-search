@@ -6,6 +6,7 @@ const nav = [
   { href: "/dashboard", label: "dashboard" },
   { href: "/jobs", label: "jobs" },
   { href: "/applications", label: "applications" },
+  { href: "/sources", label: "sources" },
 ];
 
 export default function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {

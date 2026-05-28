@@ -22,6 +22,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   const status = single(params.status);
   const minScore = single(params.min_score);
   const site = single(params.site)?.toLowerCase();
+  const company = single(params.company);
   const dateFrom = single(params.date_from);
   const dateTo = single(params.date_to);
   const sort = single(params.sort) ?? "date_desc";
@@ -35,6 +36,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   if (status && status !== "all") query.set("status", status);
   if (minScore) query.set("min_score", minScore);
   if (site) query.set("site", site);
+  if (company) query.set("company", company);
   if (dateFrom) query.set("date_from", dateFrom);
   if (dateTo) query.set("date_to", dateTo);
 
@@ -61,7 +63,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
       <CyberCard variant="terminal">
         {/* Filter form resets to page 1 on submit (no `page` field), so changing
             filters never strands the user on an empty page deep in the result set. */}
-        <form className="grid gap-3 md:grid-cols-6">
+        <form className="grid gap-3 md:grid-cols-7">
           <select name="status" defaultValue={status ?? "all"} className="field">
             <option value="all">all statuses</option>
             {statuses.map((item) => (
@@ -79,9 +81,10 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
           </select>
           <input className="field" name="min_score" placeholder="min score" defaultValue={minScore ?? ""} />
           <input className="field" name="site" placeholder="site filter" defaultValue={site ?? ""} />
+          <input className="field" name="company" placeholder="company (e.g. NVIDIA)" defaultValue={company ?? ""} />
           <input className="field" name="date_from" type="date" defaultValue={dateFrom ?? ""} />
           <input className="field" name="date_to" type="date" defaultValue={dateTo ?? ""} />
-          <button className="cyber-chamfer-sm border border-primary/60 bg-primary px-4 py-2 font-label text-sm uppercase text-primary-foreground md:col-span-6">
+          <button className="cyber-chamfer-sm border border-primary/60 bg-primary px-4 py-2 font-label text-sm uppercase text-primary-foreground md:col-span-7">
             apply filters
           </button>
         </form>

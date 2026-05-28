@@ -4,17 +4,26 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from collections import Counter, defaultdict
+from datetime import date, datetime, time, timedelta, timezone
 from threading import Thread
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
 from api.deps import get_session, require_auth
-from api.schemas import SerperEstimate, SerperRunStarted
-from db.models import Run, SearchQuery, SearchResult
+from api.schemas import (
+    SearchSourceExample,
+    SearchSourceHost,
+    SearchSourceTopQuery,
+    SearchSourcesResponse,
+    SerperEstimate,
+    SerperRunStarted,
+)
+from db.models import Run, ScoredResult, SearchQuery, SearchResult
 from db.session import SessionLocal
 from providers.factory import build_provider
 from score import score_all
@@ -67,6 +76,102 @@ def start_serper_search(
 
     Thread(target=_run_serper_search, args=(run.id,), daemon=True).start()
     return SerperRunStarted(run_id=run.id, **estimate.model_dump())
+
+
+@router.get("/sources", response_model=SearchSourcesResponse)
+def list_sources(
+    engine: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sort: str = Query(default="result_count_desc"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    session: Session = Depends(get_session),
+) -> SearchSourcesResponse:
+    """Aggregate SearchResult rows by host, with avg/max score and top
+    queries. Use this to find sites that yield poor scores and remove
+    them from sites.txt."""
+    stmt = (
+        select(
+            SearchResult.id,
+            SearchResult.url,
+            SearchResult.engine,
+            SearchResult.created_at,
+            SearchQuery.query_text,
+            ScoredResult.id,
+            ScoredResult.score,
+            ScoredResult.kept,
+        )
+        .outerjoin(SearchQuery, SearchResult.query_id == SearchQuery.id)
+        .outerjoin(ScoredResult, ScoredResult.search_result_id == SearchResult.id)
+    )
+    if engine:
+        stmt = stmt.where(SearchResult.engine.ilike(f"%{engine}%"))
+    if date_from is not None:
+        start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+        stmt = stmt.where(SearchResult.created_at >= start)
+    if date_to is not None:
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        stmt = stmt.where(SearchResult.created_at < end)
+
+    by_host: dict[str, list[dict]] = defaultdict(list)
+    for sr_id, url, _engine, _created, query_text, scored_id, score, kept in session.execute(stmt):
+        host = (urlparse(url).netloc or "").lower().lstrip("www.")
+        if not host:
+            continue
+        by_host[host].append({
+            "sr_id": sr_id,
+            "url": url,
+            "query_text": query_text,
+            "scored_id": scored_id,
+            "score": score,
+            "kept": bool(kept),
+        })
+
+    hosts: list[SearchSourceHost] = []
+    for host, rows in by_host.items():
+        scores = [r["score"] for r in rows if r["score"] is not None]
+        query_counter: Counter[str] = Counter(
+            r["query_text"] for r in rows if r["query_text"]
+        )
+        top_queries = [
+            SearchSourceTopQuery(query_text=q, count=n)
+            for q, n in query_counter.most_common(3)
+        ]
+        ranked = sorted(rows, key=lambda r: (r["score"] is not None, r["score"] or -1), reverse=True)
+        examples = [
+            SearchSourceExample(
+                url=r["url"],
+                score=r["score"],
+                query_text=r["query_text"],
+                application_id=r["scored_id"],
+            )
+            for r in ranked[:3]
+        ]
+        hosts.append(
+            SearchSourceHost(
+                host=host,
+                result_count=len(rows),
+                scored_count=len(scores),
+                avg_score=(sum(scores) / len(scores)) if scores else None,
+                max_score=max(scores) if scores else None,
+                kept_count=sum(1 for r in rows if r["kept"]),
+                top_queries=top_queries,
+                examples=examples,
+            )
+        )
+
+    sort_key = {
+        "result_count_desc": lambda h: -h.result_count,
+        "result_count_asc": lambda h: h.result_count,
+        "avg_score_desc": lambda h: -(h.avg_score if h.avg_score is not None else -1),
+        "avg_score_asc": lambda h: h.avg_score if h.avg_score is not None else 101,
+        "kept_count_desc": lambda h: -h.kept_count,
+        "host_asc": lambda h: h.host,
+    }.get(sort)
+    if sort_key is None:
+        raise HTTPException(status_code=422, detail=f"invalid sort: {sort}")
+    hosts.sort(key=sort_key)
+    return SearchSourcesResponse(total_hosts=len(hosts), hosts=hosts[:limit])
 
 
 def _serper_estimate() -> SerperEstimate:

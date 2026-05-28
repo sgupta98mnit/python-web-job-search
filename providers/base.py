@@ -72,7 +72,11 @@ def build_user_prompt(results: list[dict], criteria: str) -> str:
         "For each result, decide if it is an actual job posting (is_job), extract "
         "title/company/location/remote, and score it 0-100 against the CRITERIA. "
         "Return one object per input index. Be strict: aggregator pages, blog posts, "
-        "and recruiter directories are not jobs."
+        "and recruiter directories are not jobs. "
+        "LOCATION IS A HARD GATE: if the role is outside the US (India, Canada, EU, "
+        "UK, LATAM, APAC, etc.) you must set score <= 15 even if the role otherwise "
+        "fits. Infer the location from the snippet, URL host, and company when not "
+        "explicit; when unsure, lean toward 'not US' and score low."
     )
     return "\n".join(lines)
 
@@ -80,7 +84,8 @@ def build_user_prompt(results: list[dict], criteria: str) -> str:
 SYSTEM_PROMPT = (
     "You evaluate web search results for a job seeker. You return structured JSON "
     "only, matching the provided schema exactly. Never invent URLs or facts that "
-    "are not supported by the snippet."
+    "are not supported by the snippet. The candidate is on F-1 OPT and only takes "
+    "US-based roles - treat the location rule in the CRITERIA as a hard gate."
 )
 
 
