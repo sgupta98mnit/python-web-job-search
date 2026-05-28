@@ -144,6 +144,14 @@ BATCH_SIZE: int = _env_int("BATCH_SIZE", 8)
 MIN_SCORE: int = _env_int("MIN_SCORE", 60)
 OUTPUT_DIR: str = "output"
 
+# Deterministic post-LLM safety net. When the LLM mistakenly scores a non-US
+# role highly (despite the LOCATION HARD GATE in CRITERIA) or returns a borderline
+# score, we still mark the row as auto-rejected so it doesn't pollute the review
+# queue. Tags persisted to scored_results.rejection_reason.
+AUTO_REJECT_ENABLED: bool = _env_bool("AUTO_REJECT_ENABLED", True)
+AUTO_REJECT_MIN_SCORE: int = _env_int("AUTO_REJECT_MIN_SCORE", 35)
+AUTO_REJECT_REQUIRE_USA: bool = _env_bool("AUTO_REJECT_REQUIRE_USA", True)
+
 # Email notifications. The pipeline sends one digest of previously unsent jobs
 # whose score is strictly above EMAIL_SCORE_THRESHOLD.
 EMAIL_NOTIFICATIONS_ENABLED: bool = _env_bool("EMAIL_NOTIFICATIONS_ENABLED", True)

@@ -71,6 +71,7 @@ def list_applications(
     sort: str = Query(default="date_desc"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    rejection_reason: str | None = None,
     session: Session = Depends(get_session),
 ) -> list[Application]:
     order_by = SORT_OPTIONS.get(sort)
@@ -104,11 +105,30 @@ def list_applications(
         # Inclusive of the whole day.
         end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
         stmt = stmt.where(ScoredResult.created_at < end)
+    stmt = _apply_rejection_filter(stmt, rejection_reason)
 
     return [
         _application_from(scored, search, query_text)
         for scored, search, query_text in session.execute(stmt)
     ]
+
+
+def _apply_rejection_filter(stmt, rejection_reason: str | None):
+    """Filter by the rejection_reason column.
+
+    omitted / "" / "none"  -> hide auto-rejected (rejection_reason IS NULL)
+    "any"                  -> no filter (show everything)
+    "auto"                 -> only auto-rejected (rejection_reason IS NOT NULL)
+    "<tag>"                -> rows whose rejection_reason contains <tag>
+    """
+    value = (rejection_reason or "").strip().lower()
+    if value in ("", "none"):
+        return stmt.where(ScoredResult.rejection_reason.is_(None))
+    if value == "any":
+        return stmt
+    if value == "auto":
+        return stmt.where(ScoredResult.rejection_reason.is_not(None))
+    return stmt.where(ScoredResult.rejection_reason.ilike(f"%{value}%"))
 
 
 @router.get("/{application_id}", response_model=ApplicationDetail)
@@ -225,6 +245,7 @@ def _application_from(
         snippet=search.snippet,
         engine=search.engine,
         query_text=query_text,
+        rejection_reason=scored.rejection_reason,
     )
 
 

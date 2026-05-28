@@ -205,6 +205,9 @@ class ScoredResult(Base):
     job_description_id: Mapped[int | None] = mapped_column(
         ForeignKey("job_descriptions.id", ondelete="SET NULL"), index=True
     )
+    # Comma-separated auto-rejection tags from {"non_usa_location", "low_score"}.
+    # NULL means the row was not auto-rejected by the deterministic filter.
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
 
     job_description: Mapped["JobDescription | None"] = relationship(
         back_populates="scored"

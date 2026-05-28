@@ -14,6 +14,7 @@ import fetcher
 from db.events import record_event
 from db.models import LLMCall, Run, ScoredResult, SearchResult
 from providers.base import LLMProvider
+from score_filters import auto_reject_reason
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,20 @@ def _copy_score(
     source: ScoredResult,
     min_score: int,
 ) -> ScoredResult:
+    kept = bool(source.is_job and source.score >= min_score)
+    rejection_tags: str | None = source.rejection_reason
+    if config.AUTO_REJECT_ENABLED and rejection_tags is None:
+        # Re-evaluate in case the source predates auto-rejection.
+        rejection_tags = auto_reject_reason(
+            is_job=source.is_job,
+            score=source.score,
+            location=source.location,
+            remote=source.remote,
+            min_score=config.AUTO_REJECT_MIN_SCORE,
+            enforce_usa=config.AUTO_REJECT_REQUIRE_USA,
+        )
+    if rejection_tags:
+        kept = False
     return ScoredResult(
         run_id=run.id,
         search_result_id=search_result_id,
@@ -60,7 +75,8 @@ def _copy_score(
         remote=source.remote,
         score=source.score,
         reason=f"{source.reason} (reused cached score)".strip(),
-        kept=bool(source.is_job and source.score >= min_score),
+        kept=kept,
+        rejection_reason=rejection_tags,
     )
 
 
@@ -385,6 +401,18 @@ def score_all(
             sr = to_score[sj.index]
             kept = bool(sj.is_job and sj.score >= min_score)
             _sr, (_desc, source, jd_id) = prepared[sj.index]
+            rejection_tags: str | None = None
+            if config.AUTO_REJECT_ENABLED:
+                rejection_tags = auto_reject_reason(
+                    is_job=sj.is_job,
+                    score=sj.score,
+                    location=sj.location,
+                    remote=sj.remote,
+                    min_score=config.AUTO_REJECT_MIN_SCORE,
+                    enforce_usa=config.AUTO_REJECT_REQUIRE_USA,
+                )
+            if rejection_tags:
+                kept = False
             scored = ScoredResult(
                 run_id=run.id,
                 search_result_id=sr.id,
@@ -399,6 +427,7 @@ def score_all(
                 kept=kept,
                 source=source,
                 job_description_id=jd_id,
+                rejection_reason=rejection_tags,
             )
             session.add(scored)
             all_scored.append(scored)
@@ -421,8 +450,23 @@ def score_all(
                     "llm_call_id": last_call.id,
                     "job_description_id": jd_id,
                     "reason": sj.reason,
+                    "rejection_reason": rejection_tags,
                 },
             )
+            if rejection_tags:
+                record_event(
+                    session,
+                    normalized_url=sr.normalized_url,
+                    run_id=run.id,
+                    stage="auto_rejected",
+                    message=f"auto-rejected: {rejection_tags}",
+                    details={
+                        "tags": rejection_tags.split(","),
+                        "score": sj.score,
+                        "location": sj.location,
+                        "remote": sj.remote,
+                    },
+                )
 
         session.flush()
         if commit_each_batch:

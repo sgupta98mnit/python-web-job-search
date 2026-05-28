@@ -69,6 +69,7 @@ class Application(BaseModel):
     snippet: str
     engine: str
     query_text: str | None = None
+    rejection_reason: str | None = None
 
 
 class JobDescriptionDebug(BaseModel):

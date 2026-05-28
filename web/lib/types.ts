@@ -34,6 +34,7 @@ export type Application = {
   snippet: string;
   engine: string;
   query_text: string | null;
+  rejection_reason: string | null;
 };
 
 export type JobDescriptionDebug = {

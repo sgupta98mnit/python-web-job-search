@@ -66,6 +66,20 @@ export function JobCard({ job }: JobCardProps) {
           <div className="flex flex-wrap items-center gap-2">
             <CyberBadge status={status} />
             <span className="font-label text-xs uppercase text-muted-foreground">{job.engine}</span>
+            {job.rejection_reason &&
+              job.rejection_reason
+                .split(",")
+                .map((tag) => tag.trim())
+                .filter(Boolean)
+                .map((tag) => (
+                  <span
+                    key={tag}
+                    title={`auto-rejected: ${tag.replace(/_/g, " ")}`}
+                    className="border border-destructive/60 bg-destructive/15 px-2 py-0.5 font-label text-[10px] uppercase tracking-wider text-destructive cyber-chamfer-sm"
+                  >
+                    {tag.replace(/_/g, " ")}
+                  </span>
+                ))}
           </div>
           <h2 className="mt-2 font-heading text-xl uppercase text-foreground">{job.title}</h2>
           <p className="mt-1 text-sm text-muted-foreground">

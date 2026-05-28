@@ -20,8 +20,33 @@ const SORT_OPTIONS: Array<{ value: string; label: string }> = [
 const BASE_PATH = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH);
 const JOBS_ACTION = `${BASE_PATH}/jobs`;
 
+type ViewMode = "review" | "auto_rejected" | "approved";
+
+const VIEWS: Array<{ value: ViewMode; label: string; hint: string }> = [
+  { value: "review", label: "review", hint: "active queue (auto-rejected hidden)" },
+  { value: "auto_rejected", label: "auto-rejected", hint: "non-USA / low-score safety net" },
+  { value: "approved", label: "approved", hint: "saved + applied (prompt-tuning corpus)" },
+];
+
+const HEADINGS: Record<ViewMode, string> = {
+  review: "raw feed",
+  auto_rejected: "auto-rejected",
+  approved: "approved",
+};
+
+const SUBHEADS: Record<ViewMode, string> = {
+  review:
+    "SearXNG results arrive through the daemon. Use Serper boost only when you want a paid Google refresh.",
+  auto_rejected:
+    "Deterministic safety net caught these: non-USA location or score below AUTO_REJECT_MIN_SCORE. Spot-check for false positives — if any look wrong, tighten the prompt or relax the filter.",
+  approved:
+    "Jobs you saved or applied to. Read each card's reason next to the JD on the detail page — look for patterns the prompt should reward more strongly.",
+};
+
 export default async function JobsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
+  const rawView = single(params.view);
+  const view: ViewMode = (VIEWS.find((v) => v.value === rawView)?.value ?? "review");
   const status = single(params.status);
   const minScore = single(params.min_score);
   const site = single(params.site)?.toLowerCase();
@@ -36,6 +61,16 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     offset: String((page - 1) * PAGE_SIZE),
     sort,
   });
+  // View resolves rejection_reason and status defaults. The status select
+  // still overrides within a view (e.g. drill into "interview" inside approved).
+  if (view === "auto_rejected") {
+    query.set("rejection_reason", "auto");
+  } else if (view === "approved") {
+    query.set("rejection_reason", "any");
+    if (!status || status === "all") {
+      query.set("status", "saved,applied,interview,offer");
+    }
+  }
   if (status && status !== "all") query.set("status", status);
   if (minScore) query.set("min_score", minScore);
   if (site) query.set("site", site);
@@ -56,17 +91,38 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
-          <GlitchHeading>raw feed</GlitchHeading>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            SearXNG results arrive through the daemon. Use Serper boost only when you want a paid Google refresh.
-          </p>
+          <GlitchHeading>{HEADINGS[view]}</GlitchHeading>
+          <p className="max-w-3xl text-sm text-muted-foreground">{SUBHEADS[view]}</p>
         </div>
         <SerperSearchButton estimate={serperEstimate} />
       </div>
+
+      <nav className="flex flex-wrap gap-2 border-b border-border pb-3 font-label text-xs uppercase tracking-wider">
+        {VIEWS.map((v) => {
+          const active = v.value === view;
+          const href = v.value === "review" ? "/jobs" : `/jobs?view=${v.value}`;
+          return (
+            <Link
+              key={v.value}
+              href={href}
+              title={v.hint}
+              className={`cyber-chamfer-sm border px-3 py-2 transition ${
+                active
+                  ? "border-primary bg-primary/20 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/60 hover:text-primary"
+              }`}
+            >
+              {v.label}
+            </Link>
+          );
+        })}
+      </nav>
+
       <CyberCard variant="terminal">
         {/* Filter form resets to page 1 on submit (no `page` field), so changing
             filters never strands the user on an empty page deep in the result set. */}
         <form action={JOBS_ACTION} className="grid gap-3 md:grid-cols-7">
+          {view !== "review" && <input type="hidden" name="view" value={view} />}
           <select name="status" defaultValue={status ?? "all"} className="field">
             <option value="all">all statuses</option>
             {statuses.map((item) => (
