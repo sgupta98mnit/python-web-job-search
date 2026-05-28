@@ -110,8 +110,13 @@ def _run_serper_search(run_id: int) -> None:
         provider = build_provider()
         results = _search_with_serper(session, run, searcher)
         run.total_results = len(results)
+        session.commit()
 
-        kept = score_all(session, run, results, provider) if results else []
+        kept = (
+            score_all(session, run, results, provider, commit_each_batch=True)
+            if results
+            else []
+        )
         run.total_kept = len(kept)
         run.status = "succeeded"
         run.finished_at = datetime.now(timezone.utc)

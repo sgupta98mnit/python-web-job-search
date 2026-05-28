@@ -17,6 +17,9 @@ const SORT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "company_asc", label: "company A-Z" },
 ];
 
+const BASE_PATH = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH);
+const JOBS_ACTION = `${BASE_PATH}/jobs`;
+
 export default async function JobsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const status = single(params.status);
@@ -61,7 +64,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
       <CyberCard variant="terminal">
         {/* Filter form resets to page 1 on submit (no `page` field), so changing
             filters never strands the user on an empty page deep in the result set. */}
-        <form className="grid gap-3 md:grid-cols-6">
+        <form action={JOBS_ACTION} className="grid gap-3 md:grid-cols-6">
           <select name="status" defaultValue={status ?? "all"} className="field">
             <option value="all">all statuses</option>
             {statuses.map((item) => (
@@ -163,4 +166,15 @@ function PaginationLink({
 
 function single(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeBasePath(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed || trimmed === "/") {
+    return "";
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }

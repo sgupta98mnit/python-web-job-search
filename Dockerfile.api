@@ -18,6 +18,7 @@ COPY migrations ./migrations
 COPY providers ./providers
 COPY scripts ./scripts
 COPY searchers ./searchers
+COPY fetcher ./fetcher
 COPY queries.txt sites.txt titles.txt ./
 
 RUN mkdir -p output && chown -R app:app /app

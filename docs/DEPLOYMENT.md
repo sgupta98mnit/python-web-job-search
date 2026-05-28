@@ -99,6 +99,13 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 docker compose -f docker-compose.prod.yml ps
 ```
 
+On this VPS, Caddy runs in Docker on an external network named `web`, so use the
+Caddy override whenever you start, rebuild, or reload the production app:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml --env-file .env up -d --build
+```
+
 The web app binds to `127.0.0.1:3000` by default. For a quick direct test without
 a reverse proxy, set this in `.env` and restart:
 
@@ -200,6 +207,42 @@ View logs:
 docker compose -f docker-compose.prod.yml logs -f web api
 ```
 
+View backend API logs:
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f api
+```
+
+Open backend API logs in Vim:
+
+```bash
+docker compose -f docker-compose.prod.yml logs api > /tmp/job-search-api.log && vim /tmp/job-search-api.log
+```
+
+Or using the container name directly:
+
+```bash
+docker logs python-web-job-search-api-1 2>&1 | vim -
+```
+
+View scheduled search daemon logs:
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f daemon
+```
+
+Open scheduled search daemon logs in Vim:
+
+```bash
+docker compose -f docker-compose.prod.yml logs daemon > /tmp/job-search-daemon.log && vim /tmp/job-search-daemon.log
+```
+
+Or using the container name directly:
+
+```bash
+docker logs python-web-job-search-daemon-1 2>&1 | vim -
+```
+
 Check New Relic startup logs:
 
 ```bash
@@ -216,7 +259,7 @@ Update after pushing new code:
 
 ```bash
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml --env-file .env up -d --build
 ```
 
 Back up Postgres:

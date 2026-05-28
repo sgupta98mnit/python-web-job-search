@@ -200,6 +200,7 @@ def score_all(
     criteria: str | None = None,
     batch_size: int | None = None,
     min_score: int | None = None,
+    commit_each_batch: bool = False,
 ) -> list[ScoredResult]:
     """Score every result. Persists each LLM call + each ScoredResult."""
     criteria = criteria if criteria is not None else config.CRITERIA
@@ -291,6 +292,8 @@ def score_all(
 
         if not to_score:
             session.flush()
+            if commit_each_batch:
+                session.commit()
             print("    skipped LLM: all items handled by cache/prefilter")
             continue
 
@@ -377,6 +380,8 @@ def score_all(
             llm_scored += 1
 
         session.flush()
+        if commit_each_batch:
+            session.commit()
 
     kept_list = [s for s in all_scored if s.kept]
     kept_list.sort(key=lambda s: s.score, reverse=True)

@@ -21,6 +21,7 @@ class SearXNGSearcher(Searcher):
         params: dict[str, str | int] = {
             "q": query,
             "format": "json",
+            "engines": "google",
             "safesearch": 0,
             "language": "en-US",
             "pageno": pageno,

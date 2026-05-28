@@ -145,7 +145,7 @@ OUTPUT_DIR: str = "output"
 # Email notifications. The pipeline sends one digest of previously unsent jobs
 # whose score is strictly above EMAIL_SCORE_THRESHOLD.
 EMAIL_NOTIFICATIONS_ENABLED: bool = _env_bool("EMAIL_NOTIFICATIONS_ENABLED", True)
-EMAIL_TO: str = os.getenv("EMAIL_TO", "sgupta98mnit@outlook.com")
+EMAIL_TO: str = os.getenv("EMAIL_TO", "sgupta98mnit@gmail.com")
 EMAIL_SCORE_THRESHOLD: int = _env_int("EMAIL_SCORE_THRESHOLD", 50)
 # Email is sent via Resend (https://resend.com). The free tier only allows
 # sending FROM `onboarding@resend.dev` TO the address that owns the API key.
