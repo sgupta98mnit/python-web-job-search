@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol
 
 FetchStatus = Literal["ok", "http_error", "timeout", "unsupported", "parse_failed"]
 
@@ -36,3 +36,7 @@ class FetchOutcome:
     latency_ms: int
     extractor: str
     job_description_id: int | None  # set after persistence
+    # Pipeline events collected during this fetch (cache hit, native attempt,
+    # jina fallback, etc.). Persisted to job_events by fetch_many on the main
+    # thread - workers append here, main thread writes.
+    events: list[dict[str, Any]] = field(default_factory=list)

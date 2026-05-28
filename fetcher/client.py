@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
+from db.events import record_event
 from db.models import JobDescription
 from fetcher.base import FetchOutcome
 from fetcher.extractors.registry import ats_for_host, extractors_for_host
@@ -39,6 +40,8 @@ _http_session = requests.Session()
 def fetch_many(
     session: Session,
     urls: list[tuple[str, str]],
+    *,
+    run_id: int | None = None,
 ) -> dict[str, FetchOutcome]:
     """Fetch (or look up cached) bodies for every (normalized_url, url).
 
@@ -67,16 +70,31 @@ def fetch_many(
         row = cached_rows.get(nurl)
         if row is not None:
             outcomes[nurl] = _outcome_from_row(row)
+            record_event(
+                session,
+                normalized_url=nurl,
+                run_id=run_id,
+                stage="fetch_cache_hit",
+                message=f"reused job_descriptions row id={row.id} status={row.status}",
+                details={
+                    "job_description_id": row.id,
+                    "status": row.status,
+                    "extractor": row.extractor,
+                    "fetched_at": row.fetched_at.isoformat() if row.fetched_at else None,
+                },
+            )
         else:
             misses.append((nurl, url))
 
     if not misses:
+        session.flush()
         return outcomes
 
     workers = max(1, min(config.JD_FETCH_WORKERS, len(misses)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_fetch_one, url): (nurl, url) for nurl, url in misses
+            pool.submit(_fetch_with_fallback, url): (nurl, url)
+            for nurl, url in misses
         }
         for fut in futures:
             nurl, url = futures[fut]
@@ -84,9 +102,59 @@ def fetch_many(
             # Persist (insert or update) on the calling thread so we hold one
             # session/transaction. SQLAlchemy sessions are not thread-safe.
             row = _upsert(session, nurl=nurl, url=url, outcome=outcome)
-            outcomes[nurl] = replace(outcome, job_description_id=row.id)
+            for ev in outcome.events:
+                record_event(
+                    session,
+                    normalized_url=nurl,
+                    run_id=run_id,
+                    stage=ev["stage"],
+                    level=ev.get("level", "info"),
+                    message=ev.get("message", ""),
+                    details=ev.get("details"),
+                )
+            outcomes[nurl] = replace(outcome, job_description_id=row.id, events=[])
     session.flush()
     return outcomes
+
+
+def _fetch_with_fallback(url: str) -> FetchOutcome:
+    outcome = _fetch_one(url)
+    outcome.events.append({
+        "stage": "fetch_native",
+        "level": "info" if outcome.status == "ok" else "warning",
+        "message": f"native fetch status={outcome.status} extractor={outcome.extractor}",
+        "details": {
+            "status": outcome.status,
+            "http_status": outcome.http_status,
+            "extractor": outcome.extractor,
+            "ats": outcome.ats,
+            "latency_ms": outcome.latency_ms,
+            "error": outcome.error,
+        },
+    })
+    if outcome.status in _JINA_FALLBACK_STATUSES:
+        jina = _fetch_via_jina(url, ats=outcome.ats)
+        if jina is not None:
+            log.info("jina fallback recovered %s (was %s)", url, outcome.status)
+            jina.events = list(outcome.events) + jina.events
+            jina.events.append({
+                "stage": "jina_recovered",
+                "message": f"recovered via r.jina.ai (native was {outcome.status})",
+                "details": {
+                    "native_status": outcome.status,
+                    "http_status": jina.http_status,
+                    "body_chars": len(jina.body_text or ""),
+                    "latency_ms": jina.latency_ms,
+                },
+            })
+            return jina
+        outcome.events.append({
+            "stage": "jina_failed",
+            "level": "warning",
+            "message": "jina fallback did not yield a usable body",
+            "details": {"native_status": outcome.status},
+        })
+    return outcome
 
 
 def _outcome_from_row(row: JobDescription) -> FetchOutcome:
@@ -99,6 +167,51 @@ def _outcome_from_row(row: JobDescription) -> FetchOutcome:
         latency_ms=row.latency_ms or 0,
         extractor=row.extractor,
         job_description_id=row.id,
+    )
+
+
+_JINA_FALLBACK_STATUSES = {"parse_failed", "unsupported", "http_error", "timeout"}
+
+
+def _fetch_via_jina(url: str, ats: str) -> FetchOutcome | None:
+    """Retry through r.jina.ai for JS-rendered pages. Returns None on failure
+    so the caller keeps the original outcome."""
+    if not config.JD_JINA_ENABLED:
+        return None
+    jina_url = config.JD_JINA_BASE_URL.rstrip("/") + "/" + url
+    jina_host = (urlparse(jina_url).netloc or "").lower()
+    _bucket.acquire(jina_host)
+    start = time.monotonic()
+    try:
+        resp = _http_session.get(
+            jina_url,
+            timeout=config.JD_JINA_TIMEOUT,
+            headers={
+                "User-Agent": config.JD_USER_AGENT,
+                "Accept": "text/plain, text/markdown, */*",
+            },
+            allow_redirects=True,
+        )
+    except requests.RequestException as e:
+        log.info("jina fallback failed for %s: %s", url, e)
+        return None
+    latency_ms = int((time.monotonic() - start) * 1000)
+    if resp.status_code >= 400:
+        log.info("jina fallback HTTP %s for %s", resp.status_code, url)
+        return None
+    body = (resp.text or "").strip()
+    if len(body) < config.JD_MIN_BODY_CHARS:
+        log.info("jina fallback too-short body (%d chars) for %s", len(body), url)
+        return None
+    return FetchOutcome(
+        status="ok",
+        ats=ats,
+        body_text=body,
+        http_status=resp.status_code,
+        error=None,
+        latency_ms=latency_ms,
+        extractor="jina_reader",
+        job_description_id=None,
     )
 
 

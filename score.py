@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 import config
 import fetcher
+from db.events import record_event
 from db.models import LLMCall, Run, ScoredResult, SearchResult
 from providers.base import LLMProvider
 
@@ -222,6 +223,7 @@ def score_all(
         "unsupported": 0,
         "parse_failed": 0,
         "snippet_fallback": 0,
+        "jina_recovered": 0,
     }
     jd_ats: dict[str, int] = {}
 
@@ -259,6 +261,18 @@ def score_all(
                     session.add(scored)
                     all_scored.append(scored)
                     cache_hits += 1
+                    record_event(
+                        session,
+                        normalized_url=sr.normalized_url,
+                        run_id=run.id,
+                        stage="score_cache_hit",
+                        message=f"reused prior score={source.score} from llm_call_id={source.llm_call_id}",
+                        details={
+                            "score": source.score,
+                            "kept": scored.kept,
+                            "prior_llm_call_id": source.llm_call_id,
+                        },
+                    )
                 to_score = remaining
 
         if config.SCORE_PREFILTER_ENABLED:
@@ -288,6 +302,14 @@ def score_all(
                     session.add(scored)
                     all_scored.append(scored)
                     prefilter_hits += 1
+                    record_event(
+                        session,
+                        normalized_url=sr.normalized_url,
+                        run_id=run.id,
+                        stage="prefiltered",
+                        message=f"prefiltered: {reason}",
+                        details={"reason": str(reason)},
+                    )
                 to_score = [sr for sr in to_score if sr.id not in filtered_ids]
 
         if not to_score:
@@ -301,6 +323,7 @@ def score_all(
             jd_outcomes = fetcher.fetch_many(
                 session,
                 [(sr.normalized_url, sr.url) for sr in to_score],
+                run_id=run.id,
             )
         else:
             jd_outcomes = {}
@@ -313,6 +336,8 @@ def score_all(
             jd_totals["fetched"] += 1
             if oc.status == "ok":
                 jd_ats[oc.ats] = jd_ats.get(oc.ats, 0) + 1
+                if oc.extractor == "jina_reader":
+                    jd_totals["jina_recovered"] += 1
             else:
                 jd_totals["snippet_fallback"] += 1
 
@@ -378,6 +403,26 @@ def score_all(
             session.add(scored)
             all_scored.append(scored)
             llm_scored += 1
+            record_event(
+                session,
+                normalized_url=sr.normalized_url,
+                run_id=run.id,
+                stage="llm_scored",
+                message=f"score={sj.score} kept={kept} location={sj.location!r}",
+                details={
+                    "score": sj.score,
+                    "is_job": sj.is_job,
+                    "kept": kept,
+                    "title": sj.title,
+                    "company": sj.company,
+                    "location": sj.location,
+                    "remote": sj.remote,
+                    "source": source,
+                    "llm_call_id": last_call.id,
+                    "job_description_id": jd_id,
+                    "reason": sj.reason,
+                },
+            )
 
         session.flush()
         if commit_each_batch:
@@ -404,7 +449,8 @@ def score_all(
             f"timeout={jd_totals['timeout']} "
             f"unsupported={jd_totals['unsupported']} "
             f"parse_failed={jd_totals['parse_failed']} "
-            f"snippet_fallback={jd_totals['snippet_fallback']}"
+            f"snippet_fallback={jd_totals['snippet_fallback']} "
+            f"jina_recovered={jd_totals['jina_recovered']}"
         )
         print(f"  ATS mix (ok-only): {ats_summary}")
     return kept_list

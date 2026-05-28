@@ -33,10 +33,56 @@ export type Application = {
   search_title: string;
   snippet: string;
   engine: string;
+  query_text: string | null;
+};
+
+export type JobDescriptionDebug = {
+  id: number;
+  url: string;
+  normalized_url: string;
+  status: string;
+  http_status: number | null;
+  ats: string | null;
+  extractor: string;
+  body_text: string | null;
+  error: string | null;
+  latency_ms: number | null;
+  fetched_at: string;
+};
+
+export type LLMCallDebug = {
+  id: number;
+  provider: string;
+  model: string;
+  mode: string;
+  attempt: number;
+  system_prompt: string;
+  user_prompt: string;
+  raw_response: Record<string, unknown> | null;
+  latency_ms: number | null;
+  error: string | null;
+};
+
+export type JobEventDebug = {
+  id: number;
+  run_id: number | null;
+  stage: string;
+  level: string;
+  message: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ApplicationDebug = {
+  source: string;
+  job_description: JobDescriptionDebug | null;
+  llm_call: LLMCallDebug | null;
+  events: JobEventDebug[];
 };
 
 export type ApplicationDetail = Application & {
   resume_count: number;
+  debug?: ApplicationDebug | null;
 };
 
 export type ResumeVersionSummary = {
@@ -86,4 +132,32 @@ export type SerperEstimate = {
 export type SerperRunStarted = SerperEstimate & {
   run_id: number;
   status: "running";
+};
+
+export type SearchSourceExample = {
+  url: string;
+  score: number | null;
+  query_text: string | null;
+  application_id: number | null;
+};
+
+export type SearchSourceTopQuery = {
+  query_text: string;
+  count: number;
+};
+
+export type SearchSourceHost = {
+  host: string;
+  result_count: number;
+  scored_count: number;
+  avg_score: number | null;
+  max_score: number | null;
+  kept_count: number;
+  top_queries: SearchSourceTopQuery[];
+  examples: SearchSourceExample[];
+};
+
+export type SearchSourcesResponse = {
+  total_hosts: number;
+  hosts: SearchSourceHost[];
 };

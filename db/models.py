@@ -266,6 +266,30 @@ class EmailNotification(Base):
     )
 
 
+class JobEvent(Base):
+    """Append-only audit log of pipeline events keyed by normalized_url.
+
+    One row per stage transition (fetch attempt, jina fallback, prefilter
+    decision, LLM scoring, etc.). Lets us replay the full processing
+    history of any given job URL across runs.
+    """
+
+    __tablename__ = "job_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    normalized_url: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), index=True
+    )
+    stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    level: Mapped[str] = mapped_column(String(10), default="info", nullable=False)
+    message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class JobDescription(Base):
     __tablename__ = "job_descriptions"
     __table_args__ = (

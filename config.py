@@ -187,6 +187,14 @@ JD_USER_AGENT: str = os.getenv(
     "+https://github.com/sgupta98mnit/python-web-job-search)",
 )
 
+# Jina Reader fallback. When the native fetch yields parse_failed / unsupported
+# / http_error / timeout, retry once through https://r.jina.ai/<url>. Free
+# service, no API key required, renders JS-heavy pages server-side and returns
+# clean markdown.
+JD_JINA_ENABLED: bool = _env_bool("JD_JINA_ENABLED", True)
+JD_JINA_TIMEOUT: int = _env_int("JD_JINA_TIMEOUT", 30)
+JD_JINA_BASE_URL: str = os.getenv("JD_JINA_BASE_URL", "https://r.jina.ai/")
+
 # SearXNG time filter: None | "day" | "week" | "month" | "year"
 # "day" ~= last 24 hours (the finest granularity SearXNG exposes).
 TIME_RANGE: str | None = "day"
@@ -209,11 +217,22 @@ DATABASE_URL: str = os.getenv(
 # what you actually want.
 # ---------------------------------------------------------------------------
 CRITERIA: str = """\
+LOCATION (HARD GATE - APPLY FIRST)
+- The candidate is on F-1 OPT and will ONLY take US-based roles.
+- If the posting's location is outside the United States (India, Canada,
+  EU, UK, LATAM, APAC, MENA, etc.) the score MUST be 15 or lower regardless
+  of how well the role otherwise fits. This is a hard rule, not a preference.
+- US-remote, US-hybrid, and US-on-site all qualify as US-based.
+- If location is ambiguous or unstated, infer from the company HQ, the job
+  board (e.g. naukri.com, indeed.in implies India) and the title/snippet
+  language. When still unclear, lean toward "not US" and score low.
+- Roles requiring on-site presence outside the US: score <= 15.
+
 CANDIDATE PROFILE
 - ~3-4 years of professional software engineering experience.
 - Master's in CS (Univ. at Buffalo, Dec 2025). Bachelor's in ECE (NIT Jaipur).
 - Strongest stack: Java / Spring Boot, Python, TypeScript, React, PostgreSQL,
-  MongoDB, Redis, Kafka, Docker, Kubernetes, AWS, GraphQL.
+  MongoDB, Redis, Kafka, Docker, Kubernetes, AWS, GraphQL, Shopify.
 - Domain depth: SSO / IAM / identity (SAML, OAuth 2.0, OIDC, JWT, PKCE, SCIM)
   from 3 years at miniOrange as the primary developer on their core platform.
   Promoted to Senior Engineer there as the youngest on a 12-person team.
@@ -224,36 +243,52 @@ CANDIDATE PROFILE
 - Currently in Buffalo, NY. Open to relocating anywhere in the US.
 - F-1 OPT EAD valid until 2027-02-16; STEM OPT extension available.
   No sponsorship cost to the employer, only E-Verify enrollment required.
-- Nonresident alien for tax purposes.
 
-TARGET ROLES
-- "Software Engineer", "Software Engineer II", "Software Engineer III",
-  "Mid-level Software Engineer", "Backend Engineer", "Full Stack Engineer",
-  "Platform Engineer", "Forward Deployed Engineer", "Solutions Engineer",
-  "Integrations Engineer", "Identity Engineer".
-- Mid-level is the sweet spot. Junior / new-grad roles below ~2 yoe are too low.
-  Senior or Staff roles asking for 6+ yoe are too high - score those low.
-- Forward Deployed / Solutions / Integrations Engineer roles are a strong fit
-  given the customer-facing miniOrange background.
+ROLE FIT - SKILLS, NOT TITLES
+- Any role title is acceptable: Software Engineer, Backend, Full-Stack,
+  Platform, Solutions, Forward Deployed, Integrations, Identity, Implementation,
+  Technical Support Engineer, Customer Engineer, Sales Engineer, Developer
+  Support, Data / Analytics Engineer, Shopify Developer, Python / Java
+  Developer, etc. Do not penalize a posting just because the title is not
+  "Software Engineer".
+- What matters is whether the day-to-day work uses the candidate's skills.
+  Score high when the JD involves any of:
+    * SSO / IAM / identity protocols (SAML, OAuth, OIDC, SCIM, JWT, PKCE)
+    * Java / Spring Boot
+    * Python
+    * TypeScript / React / Node
+    * PostgreSQL / MongoDB / Redis
+    * Kafka, RabbitMQ, message queues
+    * Docker / Kubernetes / AWS
+    * GraphQL / REST API design
+    * Shopify (apps, themes, Shopify Plus integrations)
+    * LLM / agent / RAG work
+- Identity / SSO matches are the strongest fit given the miniOrange background.
+- A "Technical Support Engineer" or "Solutions Engineer" role that involves
+  troubleshooting SAML / OAuth / API integrations is a strong fit. A generic
+  customer-service or tier-1 helpdesk role with no technical skill overlap
+  is not.
 
-PREFER
-- Companies that hire F-1 OPT / STEM OPT candidates (most US tech companies do).
-- Remote, hybrid (US), or on-site anywhere in the US.
-- Backend, full-stack, platform, identity, or developer-tools teams.
-- Product-focused startups (Series B+) or established tech companies.
+SENIORITY
+- Mid-level (~2-5 yoe) is the sweet spot.
+- Junior / new-grad / intern roles below ~2 yoe: score 10-30.
+- Senior / Staff / Principal / Lead roles requiring 6+ yoe: score 20-40
+  even if everything else fits.
 
-AVOID (score low)
-- Senior / Staff / Principal / Lead roles explicitly requiring 6+ years.
+AVOID (score low regardless of other fit)
 - Defense, intelligence, federal contractor, or anything requiring
-  US citizenship or an active security clearance (candidate is on F-1 OPT).
+  US citizenship or an active security clearance.
 - Roles stating "no sponsorship of any kind" or "no OPT / CPT / H-1B".
 - Crypto / web3, ad-tech, MLM, unpaid or equity-only listings.
 - Recruiter directories, aggregator pages (Indeed, ZipRecruiter, LinkedIn
-  search pages), generic blog posts and "best companies" listicles.
-- Roles requiring on-site presence outside the US.
+  search pages), generic blog posts and "best companies" listicles
+  (these should be is_job=false).
 
-When scoring, weight role-level fit heavily: a clear mid-level Software
-Engineer role at a reasonable company should be 75-95. A senior role with
-6-8+ yoe requirement should be 20-40 even if everything else fits. A clear
-new-grad / intern role should be 10-30. Non-job results should be is_job=false.
+SCORING GUIDE (after applying the LOCATION gate)
+- Clear mid-level role with strong skill overlap at a reasonable US company: 75-95.
+- Mid-level role with partial skill overlap: 55-75.
+- Mid-level role with only weak/tangential skill overlap: 30-55.
+- Senior role requiring 6+ yoe: 20-40.
+- New-grad / intern role: 10-30.
+- Non-job results: is_job=false.
 """

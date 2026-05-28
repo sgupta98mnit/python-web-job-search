@@ -71,6 +71,11 @@ export function JobCard({ job }: JobCardProps) {
           <p className="mt-1 text-sm text-muted-foreground">
             {job.company || "unknown"} / {job.location || "unknown"} / {formatDateTime(job.created_at)}
           </p>
+          {job.query_text && (
+            <p className="mt-1 text-xs text-muted-foreground" title={job.query_text}>
+              via: <span className="text-secondary">{job.query_text}</span>
+            </p>
+          )}
           <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{job.reason || job.snippet}</p>
         </div>
         <div className="flex shrink-0 items-start justify-between gap-3 md:flex-col md:items-end">

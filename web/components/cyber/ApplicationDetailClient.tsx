@@ -7,7 +7,14 @@ import { CyberBadge, CyberButton, CyberCard, CyberSelect, GlitchHeading } from "
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Toast } from "@/components/ui/toast";
 import { clientApiBase, clientApiFetch } from "@/lib/client-api";
-import type { ApplicationDetail, ApplicationPatch, ResumeVersion, ResumeVersionSummary, Status } from "@/lib/types";
+import type {
+  ApplicationDebug,
+  ApplicationDetail,
+  ApplicationPatch,
+  ResumeVersion,
+  ResumeVersionSummary,
+  Status,
+} from "@/lib/types";
 import { statuses } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
@@ -131,7 +138,16 @@ export function ApplicationDetailClient({ application, initialResumes }: Props) 
             source <ExternalLink className="h-3 w-3" />
           </a>
         </div>
-        <p className="text-sm text-muted-foreground">found {formatDateTime(application.created_at)}</p>
+        <p className="text-sm text-muted-foreground">
+          found {formatDateTime(application.created_at)}
+          {application.query_text && (
+            <>
+              {" "}via{" "}
+              <span className="text-secondary">{application.query_text}</span>{" "}
+              <span className="text-muted-foreground">({application.engine})</span>
+            </>
+          )}
+        </p>
       </section>
 
       <CyberCard variant="terminal">
@@ -158,6 +174,8 @@ export function ApplicationDetailClient({ application, initialResumes }: Props) 
         </div>
         {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
       </CyberCard>
+
+      {application.debug && <DebugPanel debug={application.debug} />}
 
       <CyberCard variant="holographic">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -252,4 +270,151 @@ function dateInput(value: string | null) {
     return "";
   }
   return value.slice(0, 10);
+}
+
+function DebugPanel({ debug }: { debug: ApplicationDebug }) {
+  const [open, setOpen] = useState(false);
+  const jd = debug.job_description;
+  const llm = debug.llm_call;
+  const rawResponse = llm?.raw_response ? JSON.stringify(llm.raw_response, null, 2) : null;
+
+  return (
+    <CyberCard variant="terminal">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-3">
+          <h2 className="font-heading text-xl uppercase text-secondary">debug</h2>
+          <span className="font-label text-xs uppercase text-muted-foreground">
+            source: {debug.source}
+            {jd ? ` / jd: ${jd.status} (${jd.extractor})` : " / no jd row"}
+          </span>
+        </div>
+        <span className="font-label text-xs uppercase text-muted-foreground">
+          {open ? "hide" : "show"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-4 text-sm">
+          {jd ? (
+            <div className="space-y-2">
+              <h3 className="font-label text-xs uppercase text-muted-foreground">job description</h3>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">status</dt>
+                <dd>{jd.status}</dd>
+                <dt className="text-muted-foreground">http_status</dt>
+                <dd>{jd.http_status ?? "-"}</dd>
+                <dt className="text-muted-foreground">ats</dt>
+                <dd>{jd.ats ?? "-"}</dd>
+                <dt className="text-muted-foreground">extractor</dt>
+                <dd>{jd.extractor}</dd>
+                <dt className="text-muted-foreground">latency_ms</dt>
+                <dd>{jd.latency_ms ?? "-"}</dd>
+                <dt className="text-muted-foreground">fetched_at</dt>
+                <dd>{jd.fetched_at}</dd>
+                <dt className="text-muted-foreground">url</dt>
+                <dd className="truncate">{jd.url}</dd>
+              </dl>
+              {jd.error && (
+                <p className="text-xs text-destructive">error: {jd.error}</p>
+              )}
+              {jd.body_text ? (
+                <details>
+                  <summary className="cursor-pointer font-label text-xs uppercase text-muted-foreground">
+                    body_text ({jd.body_text.length} chars)
+                  </summary>
+                  <pre className="mt-2 max-h-96 overflow-auto border border-border bg-background/80 p-3 text-xs leading-relaxed whitespace-pre-wrap cyber-chamfer-sm">
+                    {jd.body_text}
+                  </pre>
+                </details>
+              ) : (
+                <p className="text-xs text-muted-foreground">no body_text (LLM saw the snippet only)</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              no job_description row linked - LLM scored from the search snippet alone.
+            </p>
+          )}
+
+          {debug.events.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="font-label text-xs uppercase text-muted-foreground">
+                event timeline ({debug.events.length})
+              </h3>
+              <ol className="space-y-1 border-l border-border pl-3">
+                {debug.events.map((event) => (
+                  <li key={event.id} className="text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-label uppercase text-muted-foreground">
+                        {event.created_at.replace("T", " ").slice(0, 19)}
+                      </span>
+                      <span
+                        className={
+                          event.level === "error"
+                            ? "font-label uppercase text-destructive"
+                            : event.level === "warning"
+                            ? "font-label uppercase text-amber-400"
+                            : "font-label uppercase text-primary"
+                        }
+                      >
+                        {event.stage}
+                      </span>
+                      {event.run_id !== null && (
+                        <span className="font-label text-muted-foreground">run #{event.run_id}</span>
+                      )}
+                    </div>
+                    {event.message && <div className="text-foreground">{event.message}</div>}
+                    {event.details && (
+                      <details>
+                        <summary className="cursor-pointer text-muted-foreground">details</summary>
+                        <pre className="mt-1 max-h-60 overflow-auto border border-border bg-background/80 p-2 text-[11px] leading-relaxed whitespace-pre-wrap cyber-chamfer-sm">
+                          {JSON.stringify(event.details, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {llm && (
+            <div className="space-y-2">
+              <h3 className="font-label text-xs uppercase text-muted-foreground">llm call</h3>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">provider/model</dt>
+                <dd>{llm.provider} / {llm.model}</dd>
+                <dt className="text-muted-foreground">mode</dt>
+                <dd>{llm.mode} (attempt {llm.attempt})</dd>
+                <dt className="text-muted-foreground">latency_ms</dt>
+                <dd>{llm.latency_ms ?? "-"}</dd>
+              </dl>
+              <details>
+                <summary className="cursor-pointer font-label text-xs uppercase text-muted-foreground">
+                  user_prompt
+                </summary>
+                <pre className="mt-2 max-h-96 overflow-auto border border-border bg-background/80 p-3 text-xs leading-relaxed whitespace-pre-wrap cyber-chamfer-sm">
+                  {llm.user_prompt}
+                </pre>
+              </details>
+              {rawResponse && (
+                <details>
+                  <summary className="cursor-pointer font-label text-xs uppercase text-muted-foreground">
+                    raw_response
+                  </summary>
+                  <pre className="mt-2 max-h-96 overflow-auto border border-border bg-background/80 p-3 text-xs leading-relaxed whitespace-pre-wrap cyber-chamfer-sm">
+                    {rawResponse}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </CyberCard>
+  );
 }

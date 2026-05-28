@@ -12,11 +12,23 @@ from api.deps import get_session, require_auth
 from api.schemas import (
     STATUSES,
     Application,
+    ApplicationDebug,
     ApplicationDetail,
     ApplicationPatch,
+    JobDescriptionDebug,
+    JobEventDebug,
+    LLMCallDebug,
     Status,
 )
-from db.models import ResumeVersion, ScoredResult, SearchResult
+from db.models import (
+    JobDescription,
+    JobEvent,
+    LLMCall,
+    ResumeVersion,
+    ScoredResult,
+    SearchQuery,
+    SearchResult,
+)
 
 router = APIRouter(
     prefix="/api/applications",
@@ -53,6 +65,7 @@ def list_applications(
     status: str | None = None,
     min_score: int | None = None,
     site: str | None = None,
+    company: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     sort: str = Query(default="date_desc"),
@@ -68,8 +81,9 @@ def list_applications(
         )
 
     stmt = (
-        select(ScoredResult, SearchResult)
+        select(ScoredResult, SearchResult, SearchQuery.query_text)
         .join(SearchResult, ScoredResult.search_result_id == SearchResult.id)
+        .outerjoin(SearchQuery, SearchResult.query_id == SearchQuery.id)
         .order_by(*order_by)
         .limit(limit)
         .offset(offset)
@@ -81,6 +95,8 @@ def list_applications(
         stmt = stmt.where(ScoredResult.score >= min_score)
     if site:
         stmt = stmt.where(func.lower(SearchResult.url).contains(site.lower()))
+    if company:
+        stmt = stmt.where(func.lower(ScoredResult.company).contains(company.lower()))
     if date_from is not None:
         start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
         stmt = stmt.where(ScoredResult.created_at >= start)
@@ -89,7 +105,10 @@ def list_applications(
         end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
         stmt = stmt.where(ScoredResult.created_at < end)
 
-    return [_application_from(scored, search) for scored, search in session.execute(stmt)]
+    return [
+        _application_from(scored, search, query_text)
+        for scored, search, query_text in session.execute(stmt)
+    ]
 
 
 @router.get("/{application_id}", response_model=ApplicationDetail)
@@ -97,8 +116,8 @@ def get_application(
     application_id: int,
     session: Session = Depends(get_session),
 ) -> ApplicationDetail:
-    scored, search = _fetch_application(session, application_id)
-    return _application_detail_from(session, scored, search)
+    scored, search, query_text = _fetch_application(session, application_id)
+    return _application_detail_from(session, scored, search, query_text)
 
 
 @router.patch("/{application_id}", response_model=ApplicationDetail)
@@ -107,7 +126,7 @@ def patch_application(
     body: ApplicationPatch,
     session: Session = Depends(get_session),
 ) -> ApplicationDetail:
-    scored, search = _fetch_application(session, application_id)
+    scored, search, query_text = _fetch_application(session, application_id)
     changes = body.model_dump(exclude_unset=True)
     now = datetime.now(timezone.utc)
 
@@ -125,35 +144,64 @@ def patch_application(
         scored.status_updated_at = now
 
     session.flush()
-    return _application_detail_from(session, scored, search)
+    return _application_detail_from(session, scored, search, query_text)
 
 
-def _fetch_application(session: Session, application_id: int) -> tuple[ScoredResult, SearchResult]:
+def _fetch_application(
+    session: Session, application_id: int
+) -> tuple[ScoredResult, SearchResult, str | None]:
     row = session.execute(
-        select(ScoredResult, SearchResult)
+        select(ScoredResult, SearchResult, SearchQuery.query_text)
         .join(SearchResult, ScoredResult.search_result_id == SearchResult.id)
+        .outerjoin(SearchQuery, SearchResult.query_id == SearchQuery.id)
         .where(ScoredResult.id == application_id)
     ).one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="application not found")
-    return row[0], row[1]
+    return row[0], row[1], row[2]
 
 
 def _application_detail_from(
-    session: Session, scored: ScoredResult, search: SearchResult
+    session: Session,
+    scored: ScoredResult,
+    search: SearchResult,
+    query_text: str | None,
 ) -> ApplicationDetail:
     resume_count = session.scalar(
         select(func.count(ResumeVersion.id)).where(
             ResumeVersion.scored_result_id == scored.id
         )
     )
+    jd = (
+        session.get(JobDescription, scored.job_description_id)
+        if scored.job_description_id is not None
+        else None
+    )
+    llm = session.get(LLMCall, scored.llm_call_id)
+    events = list(
+        session.scalars(
+            select(JobEvent)
+            .where(JobEvent.normalized_url == search.normalized_url)
+            .order_by(JobEvent.created_at.asc(), JobEvent.id.asc())
+            .limit(500)
+        )
+    )
+    debug = ApplicationDebug(
+        source=scored.source,
+        job_description=JobDescriptionDebug.model_validate(jd) if jd else None,
+        llm_call=LLMCallDebug.model_validate(llm) if llm else None,
+        events=[JobEventDebug.model_validate(e) for e in events],
+    )
     return ApplicationDetail(
-        **_application_from(scored, search).model_dump(),
+        **_application_from(scored, search, query_text).model_dump(),
         resume_count=int(resume_count or 0),
+        debug=debug,
     )
 
 
-def _application_from(scored: ScoredResult, search: SearchResult) -> Application:
+def _application_from(
+    scored: ScoredResult, search: SearchResult, query_text: str | None = None
+) -> Application:
     return Application(
         id=scored.id,
         run_id=scored.run_id,
@@ -176,6 +224,7 @@ def _application_from(scored: ScoredResult, search: SearchResult) -> Application
         search_title=search.title,
         snippet=search.snippet,
         engine=search.engine,
+        query_text=query_text,
     )
 
 
