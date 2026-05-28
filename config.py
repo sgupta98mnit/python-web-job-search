@@ -64,6 +64,8 @@ PRESETS: dict[str, dict[str, str | None]] = {
             "nvidia/llama-3.3-nemotron-super-49b-v1.5",
         ),
         "rpm_limit": 40,           # NVIDIA NIM catalog is ~40 req/min
+        # NVIDIA is free; bias toward accuracy by scoring one job per call.
+        "batch_size": 1,
     },
     "anthropic": {
         "kind": "anthropic",

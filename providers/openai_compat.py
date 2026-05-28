@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any
 
-from openai import OpenAI
+from openai import OpenAI, APIStatusError, APIConnectionError, RateLimitError
 from pydantic import ValidationError
 
 from .base import (
@@ -123,6 +123,64 @@ class OpenAICompatibleProvider(LLMProvider):
         return outcome
 
     # ------------------------------------------------------------------
+    _MAX_429_RETRIES = 6
+    _BASE_BACKOFF = 5.0
+    _MAX_BACKOFF = 60.0
+
+    def _create_with_retry(self, kwargs: dict[str, Any], *, mode: str, attempt: int):
+        """Call chat.completions.create, retrying on 429/rate-limit with backoff.
+
+        The provider's RPM limiter is best-effort; the server may still 429
+        (concurrent calls, short bursts, shared per-key quotas). Retry rather
+        than give up on the batch."""
+        for tries in range(self._MAX_429_RETRIES + 1):
+            try:
+                return self.client.chat.completions.create(**kwargs)
+            except RateLimitError as e:
+                if tries >= self._MAX_429_RETRIES:
+                    raise
+                delay = self._retry_delay(e, tries)
+                log.warning(
+                    "%s 429 rate-limit (mode=%s attempt=%d retry=%d/%d): sleeping %.1fs",
+                    self.provider_name, mode, attempt, tries + 1,
+                    self._MAX_429_RETRIES, delay,
+                )
+                time.sleep(delay)
+            except APIStatusError as e:
+                # Some providers return 429-equivalents under different codes.
+                if getattr(e, "status_code", None) == 429 and tries < self._MAX_429_RETRIES:
+                    delay = self._retry_delay(e, tries)
+                    log.warning(
+                        "%s 429 (APIStatusError) retry %d/%d, sleeping %.1fs",
+                        self.provider_name, tries + 1, self._MAX_429_RETRIES, delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                raise
+            except APIConnectionError as e:
+                if tries >= self._MAX_429_RETRIES:
+                    raise
+                delay = self._retry_delay(e, tries)
+                log.warning(
+                    "%s connection error retry %d/%d, sleeping %.1fs: %s",
+                    self.provider_name, tries + 1, self._MAX_429_RETRIES, delay, e,
+                )
+                time.sleep(delay)
+        # unreachable
+        raise RuntimeError("retry loop exited unexpectedly")
+
+    def _retry_delay(self, err: Exception, tries: int) -> float:
+        # Honor Retry-After header when the server provides one.
+        try:
+            resp = getattr(err, "response", None)
+            if resp is not None:
+                ra = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+                if ra:
+                    return min(float(ra), self._MAX_BACKOFF)
+        except (AttributeError, ValueError, TypeError):
+            pass
+        return min(self._BASE_BACKOFF * (2 ** tries), self._MAX_BACKOFF)
+
     def _call(
         self,
         prompt: str,
@@ -157,7 +215,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
         t0 = time.monotonic()
         try:
-            resp = self.client.chat.completions.create(**kwargs)
+            resp = self._create_with_retry(kwargs, mode=mode, attempt=attempt)
             latency_ms = int((time.monotonic() - t0) * 1000)
             raw = resp.model_dump()
             return LLMCallRecord(

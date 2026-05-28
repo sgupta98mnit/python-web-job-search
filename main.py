@@ -105,6 +105,8 @@ def _run_pipeline(
         print(f"Title subset:   {active}")
     provider = build_provider()
     preset = config.PRESETS[config.PROVIDER]
+    # Per-provider override (e.g. NVIDIA scores one-at-a-time for accuracy).
+    effective_batch_size = int(preset.get("batch_size") or config.BATCH_SIZE)
 
     run = Run(
         provider=config.PROVIDER,
@@ -113,7 +115,7 @@ def _run_pipeline(
         time_range=config.TIME_RANGE,
         location=config.LOCATION,
         results_per_query=config.RESULTS_PER_QUERY,
-        batch_size=config.BATCH_SIZE,
+        batch_size=effective_batch_size,
         min_score=config.MIN_SCORE,
         status="running",
     )
@@ -141,7 +143,7 @@ def _run_pipeline(
             return 0
 
         print(f"Scoring {len(results)} results with {config.PROVIDER}...")
-        kept = score_all(session, run, results, provider)
+        kept = score_all(session, run, results, provider, batch_size=effective_batch_size)
         run.total_kept = len(kept)
         run.status = "succeeded"
         run.finished_at = datetime.now(timezone.utc)
